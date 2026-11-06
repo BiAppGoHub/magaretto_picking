@@ -1,0 +1,2449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>MAGARETTO - Control de Empaque y Códigos de Barra</title>
+  
+  <!-- PWA & Mobile Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MAGARETTO">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <!-- Meta No Cache -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- Forzador de Actualización Limpia de Caché PWA y Service Worker -->
+  <script>
+    (function() {
+      try {
+        const isSecureOrLocal = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const TARGET_VERSION = 'v3.0.0';
+        if (isSecureOrLocal && localStorage.getItem('vete_pwa_version') !== TARGET_VERSION) {
+          if ('caches' in window) {
+            caches.keys().then(function(keys) {
+              keys.forEach(function(key) {
+                if (key !== 'vete-' + TARGET_VERSION) caches.delete(key);
+              });
+            }).catch(function() {});
+          }
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              regs.forEach(function(r) { r.update(); });
+            }).catch(function() {});
+          }
+          localStorage.setItem('vete_pwa_version', TARGET_VERSION);
+        }
+      } catch (_) {}
+    })();
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Supabase JS Client v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- Escáner de Códigos de Barra por Cámara (Offline / Local) -->
+  <script src="html5-qrcode.min.js"></script>
+  
+  <!-- Exportador Nativo a Formato Excel XLSX (SheetJS Offline / Local con Fallback CDN) -->
+  <script src="xlsx.full.min.js"></script>
+  <script>
+    if (typeof XLSX === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
+    }
+  </script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="styles.css?v=3.0.0">
+
+  <!-- Estilos Críticos Directos para Tablero / Dashboard (Garantiza renderizado 100% perfecto) -->
+  <style id="dashboardCriticalStyles">
+    #tab-dashboard {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 0.5rem 0 2.5rem 0;
+    }
+    .dash-header-bar {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 1.25rem !important;
+      margin-bottom: 1.5rem !important;
+      flex-wrap: wrap !important;
+      width: 100% !important;
+    }
+    .dash-header-title {
+      display: flex !important;
+      align-items: center !important;
+      gap: 1rem !important;
+    }
+    .dash-title-icon {
+      width: 48px !important;
+      height: 48px !important;
+      border-radius: 10px !important;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2)) !important;
+      border: 1px solid rgba(56, 189, 248, 0.3) !important;
+      color: #38bdf8 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-size: 1.5rem !important;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.2) !important;
+      flex-shrink: 0 !important;
+    }
+    .dash-title {
+      font-size: 1.4rem !important;
+      font-weight: 800 !important;
+      color: #ffffff !important;
+      margin: 0 !important;
+      letter-spacing: -0.02em !important;
+    }
+    .dash-subtitle {
+      font-size: 0.85rem !important;
+      color: #94a3b8 !important;
+      margin-top: 0.2rem !important;
+    }
+    .dash-header-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.75rem !important;
+      flex-wrap: wrap !important;
+    }
+    .dash-filters-card {
+      background: #1e293b !important;
+      border: 1px solid #334155 !important;
+      border-radius: 12px !important;
+      padding: 1.25rem 1.5rem !important;
+      margin-bottom: 1.75rem !important;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      overflow: visible !important;
+      position: relative !important;
+    }
+    .dash-filters-header {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 1rem !important;
+      padding-bottom: 0.75rem !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    .dash-filters-title {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      font-size: 0.95rem !important;
+      font-weight: 800 !important;
+      color: #ffffff !important;
+    }
+    .dash-filters-badge {
+      font-size: 0.8rem !important;
+      font-weight: 700 !important;
+      color: #38bdf8 !important;
+      background: rgba(56, 189, 248, 0.12) !important;
+      padding: 0.25rem 0.65rem !important;
+      border-radius: 20px !important;
+      border: 1px solid rgba(56, 189, 248, 0.25) !important;
+    }
+    .dash-filters-row-main {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 0.85rem !important;
+      align-items: flex-end !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      margin-bottom: 0.85rem !important;
+    }
+    .dash-filters-row-main .dash-filter-item {
+      flex: 1 1 180px !important;
+      min-width: 155px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.35rem !important;
+      box-sizing: border-box !important;
+    }
+    .dash-filters-row-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.85rem !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      flex-wrap: wrap !important;
+    }
+    .dash-search-wrap {
+      flex: 1 !important;
+      min-width: 250px !important;
+      position: relative !important;
+      display: flex !important;
+      align-items: center !important;
+    }
+    .dash-search-icon {
+      position: absolute !important;
+      left: 0.85rem !important;
+      color: #64748b !important;
+      pointer-events: none !important;
+      font-size: 0.9rem !important;
+    }
+    .dash-search-input-field {
+      padding-left: 2.3rem !important;
+      height: 38px !important;
+      font-size: 0.85rem !important;
+      width: 100% !important;
+    }
+    .dash-btn-reset-filters {
+      height: 38px !important;
+      padding: 0 1rem !important;
+      white-space: nowrap !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.45rem !important;
+      font-weight: 700 !important;
+      font-size: 0.85rem !important;
+      background: rgba(30, 41, 59, 0.8) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #cbd5e1 !important;
+      border-radius: 6px !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+    }
+    .dash-btn-reset-filters:hover {
+      background: rgba(56, 189, 248, 0.15) !important;
+      border-color: #38bdf8 !important;
+      color: #ffffff !important;
+    }
+    .dash-filter-label {
+      font-size: 0.75rem !important;
+      font-weight: 700 !important;
+      color: #94a3b8 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.35rem !important;
+      white-space: nowrap !important;
+    }
+    .dash-input {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 38px !important;
+      box-sizing: border-box !important;
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #ffffff !important;
+      border-radius: 6px !important;
+      font-size: 0.85rem !important;
+      font-weight: 700 !important;
+      padding: 0.45rem 0.75rem !important;
+      transition: all 0.2s ease !important;
+      display: block !important;
+      outline: none !important;
+    }
+    .dash-input:focus {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25) !important;
+    }
+    select.dash-input {
+      cursor: pointer !important;
+    }
+    .dash-multiselect-wrap {
+      position: relative !important;
+      width: 100% !important;
+    }
+    .dash-multiselect-btn {
+      width: 100% !important;
+      height: 38px !important;
+      box-sizing: border-box !important;
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      color: #ffffff !important;
+      border-radius: 6px !important;
+      font-size: 0.85rem !important;
+      font-weight: 700 !important;
+      padding: 0 0.75rem !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 0.5rem !important;
+      cursor: pointer !important;
+      transition: all 0.2s ease !important;
+      user-select: none !important;
+    }
+    .dash-multiselect-btn:hover, .dash-multiselect-btn.open {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25) !important;
+    }
+    .dash-multiselect-label-text {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      flex: 1 !important;
+      text-align: left !important;
+    }
+    .dash-multiselect-chevron {
+      font-size: 0.75rem !important;
+      color: #94a3b8 !important;
+      transition: transform 0.2s ease !important;
+      flex-shrink: 0 !important;
+    }
+    .dash-multiselect-btn.open .dash-multiselect-chevron {
+      transform: rotate(180deg) !important;
+      color: #38bdf8 !important;
+    }
+    .dash-multiselect-dropdown {
+      position: absolute !important;
+      top: calc(100% + 5px) !important;
+      left: 0 !important;
+      width: 100% !important;
+      min-width: 260px !important;
+      max-width: 360px !important;
+      background: #090e1a !important;
+      border: 1px solid rgba(56, 189, 248, 0.4) !important;
+      border-radius: 8px !important;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.9) !important;
+      z-index: 9999 !important;
+      padding: 0.6rem !important;
+      display: none !important;
+      flex-direction: column !important;
+      gap: 0.5rem !important;
+      box-sizing: border-box !important;
+    }
+    .dash-multiselect-dropdown.open {
+      display: flex !important;
+    }
+    .dash-multiselect-search-box {
+      position: relative !important;
+      width: 100% !important;
+    }
+    .dash-multiselect-search-box i {
+      position: absolute !important;
+      left: 0.65rem !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      color: #64748b !important;
+      font-size: 0.8rem !important;
+      pointer-events: none !important;
+    }
+    .dash-multiselect-search-input {
+      width: 100% !important;
+      box-sizing: border-box !important;
+      height: 32px !important;
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 6px !important;
+      color: #ffffff !important;
+      padding: 0.25rem 0.65rem 0.25rem 1.85rem !important;
+      font-size: 0.8rem !important;
+      font-weight: 600 !important;
+    }
+    .dash-multiselect-search-input:focus {
+      border-color: #38bdf8 !important;
+      outline: none !important;
+    }
+    .dash-multiselect-actions {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0.15rem 0.25rem 0.35rem 0.25rem !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    .dash-multiselect-action-btn {
+      background: none !important;
+      border: none !important;
+      color: #38bdf8 !important;
+      font-size: 0.75rem !important;
+      font-weight: 700 !important;
+      cursor: pointer !important;
+      padding: 0.15rem 0.4rem !important;
+      border-radius: 4px !important;
+    }
+    .dash-multiselect-action-btn:hover {
+      background: rgba(56, 189, 248, 0.15) !important;
+      color: #7dd3fc !important;
+    }
+    .dash-multiselect-list {
+      max-height: 220px !important;
+      overflow-y: auto !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.2rem !important;
+      padding-right: 0.2rem !important;
+    }
+    .dash-multiselect-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      padding: 0.35rem 0.5rem !important;
+      border-radius: 5px !important;
+      cursor: pointer !important;
+      font-size: 0.82rem !important;
+      color: #cbd5e1 !important;
+      transition: background 0.15s ease !important;
+      user-select: none !important;
+    }
+    .dash-multiselect-item:hover {
+      background: rgba(255, 255, 255, 0.07) !important;
+      color: #ffffff !important;
+    }
+    .dash-multiselect-item input[type="checkbox"] {
+      accent-color: #0284c7 !important;
+      width: 15px !important;
+      height: 15px !important;
+      cursor: pointer !important;
+      margin: 0 !important;
+      flex-shrink: 0 !important;
+    }
+    .dash-multiselect-item-badge {
+      font-family: monospace, var(--font-mono) !important;
+      font-size: 0.72rem !important;
+      font-weight: 700 !important;
+      padding: 0.1rem 0.35rem !important;
+      border-radius: 4px !important;
+      background: rgba(56, 189, 248, 0.15) !important;
+      color: #38bdf8 !important;
+      white-space: nowrap !important;
+      flex-shrink: 0 !important;
+    }
+    .dash-kpi-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+      gap: 1rem !important;
+      margin-bottom: 1.75rem !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .dash-kpi-card {
+      background: #1e293b !important;
+      border: 1px solid #334155 !important;
+      border-radius: 10px !important;
+      padding: 1.15rem 1.25rem !important;
+      position: relative !important;
+      overflow: hidden !important;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease !important;
+      box-sizing: border-box !important;
+    }
+    .dash-kpi-card:hover {
+      transform: translateY(-4px) !important;
+      box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.5) !important;
+    }
+    .dash-kpi-card.blue:hover { border-color: rgba(59, 130, 246, 0.6) !important; }
+    .dash-kpi-card.cyan:hover { border-color: rgba(56, 189, 248, 0.6) !important; }
+    .dash-kpi-card.green:hover { border-color: rgba(52, 211, 153, 0.6) !important; }
+    .dash-kpi-card.amber:hover { border-color: rgba(245, 158, 11, 0.6) !important; }
+    .dash-kpi-card.purple:hover { border-color: rgba(168, 85, 247, 0.6) !important; }
+    .dash-kpi-card.gold:hover { border-color: rgba(250, 204, 21, 0.7) !important; }
+    .dash-kpi-top {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 0.6rem !important;
+    }
+    .dash-kpi-icon {
+      width: 38px !important;
+      height: 38px !important;
+      border-radius: 6px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-size: 1.15rem !important;
+    }
+    .dash-kpi-card.blue .dash-kpi-icon { background: rgba(59, 130, 246, 0.15) !important; color: #60a5fa !important; }
+    .dash-kpi-card.cyan .dash-kpi-icon { background: rgba(56, 189, 248, 0.15) !important; color: #38bdf8 !important; }
+    .dash-kpi-card.green .dash-kpi-icon { background: rgba(52, 211, 153, 0.15) !important; color: #34d399 !important; }
+    .dash-kpi-card.amber .dash-kpi-icon { background: rgba(245, 158, 11, 0.15) !important; color: #fbbf24 !important; }
+    .dash-kpi-card.purple .dash-kpi-icon { background: rgba(168, 85, 247, 0.15) !important; color: #c084fc !important; }
+    .dash-kpi-card.gold .dash-kpi-icon { background: rgba(250, 204, 21, 0.2) !important; color: #facc15 !important; }
+    .dash-kpi-tag {
+      font-size: 0.72rem !important;
+      font-weight: 800 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.03em !important;
+      padding: 0.2rem 0.55rem !important;
+      border-radius: 4px !important;
+      background: rgba(255, 255, 255, 0.06) !important;
+      color: #94a3b8 !important;
+    }
+    .dash-kpi-value {
+      font-size: 2.1rem !important;
+      font-weight: 900 !important;
+      color: #ffffff !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+      line-height: 1.1 !important;
+      margin-bottom: 0.35rem !important;
+      letter-spacing: -0.02em !important;
+    }
+    .dash-kpi-leader {
+      font-size: 1.25rem !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      color: #facc15 !important;
+    }
+    .dash-kpi-sub {
+      font-size: 0.78rem !important;
+      color: #94a3b8 !important;
+      font-weight: 600 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.35rem !important;
+    }
+    .dash-pill-pct {
+      font-weight: 800 !important;
+      padding: 0.1rem 0.4rem !important;
+      border-radius: 4px !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+      font-size: 0.75rem !important;
+    }
+    .dash-pill-pct.cyan { background: rgba(56, 189, 248, 0.2) !important; color: #38bdf8 !important; }
+    .dash-pill-pct.green { background: rgba(52, 211, 153, 0.2) !important; color: #34d399 !important; }
+    .dash-analytics-grid {
+      display: grid !important;
+      grid-template-columns: 1.3fr 0.9fr !important;
+      gap: 1.5rem !important;
+      margin-bottom: 1.5rem !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    @media (max-width: 900px) {
+      .dash-analytics-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+    .dash-card {
+      background: #1e293b !important;
+      border: 1px solid #334155 !important;
+      border-radius: 12px !important;
+      overflow: hidden !important;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+      transition: border-color 0.2s ease !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .dash-card:hover {
+      border-color: rgba(56, 189, 248, 0.3) !important;
+    }
+    .dash-card-header {
+      padding: 1rem 1.25rem !important;
+      background: rgba(255, 255, 255, 0.02) !important;
+      border-bottom: 1px solid #334155 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 1rem !important;
+      flex-wrap: wrap !important;
+    }
+    .dash-card-title {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.6rem !important;
+      font-size: 0.95rem !important;
+      font-weight: 800 !important;
+      color: #ffffff !important;
+    }
+    .dash-card-badge {
+      font-size: 0.72rem !important;
+      font-weight: 800 !important;
+      text-transform: uppercase !important;
+      color: #94a3b8 !important;
+      background: rgba(255, 255, 255, 0.05) !important;
+      padding: 0.2rem 0.5rem !important;
+      border-radius: 4px !important;
+    }
+    .dash-card-body {
+      padding: 1.25rem !important;
+    }
+    .dash-matrix-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
+      gap: 0.85rem !important;
+      width: 100% !important;
+    }
+    .dash-matrix-item {
+      background: rgba(15, 23, 42, 0.7) !important;
+      border: 1px solid #334155 !important;
+      border-radius: 8px !important;
+      padding: 0.9rem 1rem !important;
+      transition: all 0.2s ease !important;
+      position: relative !important;
+      overflow: hidden !important;
+    }
+    .dash-matrix-item:hover {
+      border-color: #38bdf8 !important;
+      background: rgba(15, 23, 42, 0.9) !important;
+      transform: translateY(-2px) !important;
+    }
+    .dash-matrix-item-top {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      margin-bottom: 0.4rem !important;
+    }
+    .dash-matrix-tag {
+      font-size: 0.72rem !important;
+      font-weight: 800 !important;
+      padding: 0.15rem 0.45rem !important;
+      border-radius: 4px !important;
+    }
+    .dash-matrix-tag.primera { background: rgba(56, 189, 248, 0.15) !important; color: #38bdf8 !important; }
+    .dash-matrix-tag.segunda { background: rgba(52, 211, 153, 0.15) !important; color: #34d399 !important; }
+    .dash-matrix-count {
+      font-size: 1.5rem !important;
+      font-weight: 900 !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+      color: #ffffff !important;
+    }
+    .dash-matrix-name {
+      font-size: 0.88rem !important;
+      font-weight: 800 !important;
+      color: #e2e8f0 !important;
+      margin-bottom: 0.5rem !important;
+    }
+    .dash-matrix-bar-wrap {
+      width: 100% !important;
+      height: 6px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-radius: 3px !important;
+      overflow: hidden !important;
+      margin-top: 0.4rem !important;
+    }
+    .dash-matrix-bar-fill {
+      height: 100% !important;
+      border-radius: 3px !important;
+      transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    .dash-matrix-bar-fill.primera { background: linear-gradient(90deg, #0284c7, #38bdf8) !important; }
+    .dash-matrix-bar-fill.segunda { background: linear-gradient(90deg, #059669, #34d399) !important; }
+    .dash-shift-list {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.85rem !important;
+    }
+    .dash-shift-item {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0.75rem 1rem !important;
+      background: rgba(15, 23, 42, 0.7) !important;
+      border: 1px solid #334155 !important;
+      border-radius: 8px !important;
+      transition: border-color 0.2s ease !important;
+    }
+    .dash-shift-item:hover {
+      border-color: rgba(52, 211, 153, 0.5) !important;
+    }
+    .dash-shift-left {
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.75rem !important;
+    }
+    .dash-shift-icon {
+      width: 34px !important;
+      height: 34px !important;
+      border-radius: 6px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-size: 1rem !important;
+    }
+    .dash-shift-icon.manana { background: rgba(245, 158, 11, 0.15) !important; color: #fbbf24 !important; }
+    .dash-shift-icon.tarde { background: rgba(249, 115, 22, 0.15) !important; color: #fb923c !important; }
+    .dash-shift-icon.noche { background: rgba(99, 102, 241, 0.15) !important; color: #818cf8 !important; }
+    .dash-shift-name {
+      font-size: 0.9rem !important;
+      font-weight: 800 !important;
+      color: #ffffff !important;
+    }
+    .dash-shift-sub {
+      font-size: 0.75rem !important;
+      color: #94a3b8 !important;
+    }
+    .dash-shift-right {
+      text-align: right !important;
+    }
+    .dash-shift-val {
+      font-size: 1.25rem !important;
+      font-weight: 900 !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+      color: #ffffff !important;
+    }
+    .dash-shift-pct {
+      font-size: 0.75rem !important;
+      font-weight: 700 !important;
+      color: #38bdf8 !important;
+    }
+    .dash-hourly-chart {
+      display: flex !important;
+      align-items: flex-end !important;
+      gap: 0.5rem !important;
+      height: 180px !important;
+      padding-top: 1.5rem !important;
+      overflow-x: auto !important;
+      border-bottom: 1px solid #334155 !important;
+      padding-bottom: 0.5rem !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .dash-hourly-col {
+      flex: 1 !important;
+      min-width: 32px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      gap: 0.35rem !important;
+      height: 100% !important;
+      justify-content: flex-end !important;
+    }
+    .dash-hourly-bar-container {
+      width: 100% !important;
+      max-width: 38px !important;
+      height: 100% !important;
+      display: flex !important;
+      align-items: flex-end !important;
+      justify-content: center !important;
+      position: relative !important;
+    }
+    .dash-hourly-bar {
+      width: 100% !important;
+      background: linear-gradient(180deg, #38bdf8 0%, rgba(56, 189, 248, 0.3) 100%) !important;
+      border-radius: 4px 4px 0 0 !important;
+      transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease !important;
+      min-height: 4px !important;
+      cursor: pointer !important;
+      position: relative !important;
+    }
+    .dash-hourly-bar:hover {
+      background: linear-gradient(180deg, #7dd3fc 0%, #0284c7 100%) !important;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.5) !important;
+    }
+    .dash-hourly-tooltip {
+      position: absolute !important;
+      top: -24px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      background: #0f172a !important;
+      color: #ffffff !important;
+      padding: 0.15rem 0.4rem !important;
+      border-radius: 4px !important;
+      font-size: 0.72rem !important;
+      font-weight: 800 !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+      border: 1px solid #38bdf8 !important;
+      white-space: nowrap !important;
+      pointer-events: none !important;
+      opacity: 0 !important;
+      transition: opacity 0.2s ease !important;
+      z-index: 5 !important;
+    }
+    .dash-hourly-bar:hover .dash-hourly-tooltip {
+      opacity: 1 !important;
+    }
+    .dash-hourly-label {
+      font-size: 0.68rem !important;
+      font-weight: 700 !important;
+      color: #94a3b8 !important;
+      font-family: monospace, var(--font-mono, 'JetBrains Mono') !important;
+    }
+    .dash-rank-badge {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 28px !important;
+      height: 28px !important;
+      border-radius: 50% !important;
+      font-size: 0.85rem !important;
+      font-weight: 900 !important;
+    }
+    .dash-rank-badge.top-1 { background: rgba(250, 204, 21, 0.2) !important; color: #facc15 !important; border: 1px solid rgba(250, 204, 21, 0.4) !important; }
+    .dash-rank-badge.top-2 { background: rgba(226, 232, 240, 0.2) !important; color: #e2e8f0 !important; border: 1px solid rgba(226, 232, 240, 0.4) !important; }
+    .dash-rank-badge.top-3 { background: rgba(217, 119, 6, 0.2) !important; color: #f59e0b !important; border: 1px solid rgba(217, 119, 6, 0.4) !important; }
+    .dash-rank-badge.standard { color: #94a3b8 !important; font-size: 0.8rem !important; font-weight: 800 !important; }
+    .dash-plant-share-bar {
+      width: 100% !important;
+      height: 6px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-radius: 3px !important;
+      overflow: hidden !important;
+      margin-top: 0.3rem !important;
+    }
+    .dash-plant-share-fill {
+      height: 100% !important;
+      background: linear-gradient(90deg, #38bdf8, #818cf8) !important;
+      border-radius: 3px !important;
+      transition: width 0.5s ease !important;
+    }
+    .dash-envase-pill {
+      display: inline-block !important;
+      font-size: 0.72rem !important;
+      font-weight: 700 !important;
+      padding: 0.15rem 0.4rem !important;
+      border-radius: 4px !important;
+      background: rgba(255, 255, 255, 0.08) !important;
+      color: #e2e8f0 !important;
+      margin: 0.1rem 0.15rem !important;
+      white-space: nowrap !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       PANTALLA DE ACCESO / LOGIN (SEGURIDAD Y ROLES)
+       ======================================================================== -->
+  <div class="auth-overlay" id="authLoginOverlay">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="auth-logo">
+          <img src="icon-192.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-lg);" alt="Logo">
+        </div>
+        <h2>MAGARETTO</h2>
+        <p>Control de Empaque y Monitoreo de Planta</p>
+      </div>
+
+      <form id="loginForm" onsubmit="return false;">
+        <div class="form-group">
+          <label class="form-label" for="loginUsername">Usuario</label>
+          <input type="text" id="loginUsername" class="form-control" placeholder="Ingrese su usuario..." autocomplete="username" autofocus required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Contraseña</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="loginPassword" class="form-control" placeholder="Ingrese su contraseña..." autocomplete="current-password" required>
+            <button type="button" class="btn-toggle-eye" id="btnTogglePassword" title="Mostrar/Ocultar contraseña">
+              <i class="fa-solid fa-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="loginErrorAlert" class="auth-error-alert" style="display:none;"></div>
+
+        <button type="submit" class="btn-primary auth-submit-btn" id="btnSubmitLogin">
+          <i class="fa-solid fa-right-to-bracket"></i> Iniciar Sesión
+        </button>
+      </form>
+
+      <div class="auth-footer-hint">
+        <small><i class="fa-solid fa-shield-halved"></i> Control de acceso por roles y encriptación SHA-256</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- HEADER PRINCIPAL -->
+  <header class="app-header">
+    <div class="header-container">
+      
+      <!-- Logo y Título -->
+      <div class="brand-section">
+        <div class="brand-logo" style="overflow: hidden; padding: 0;">
+          <img src="favicon.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-md);" alt="Logo">
+        </div>
+        <div class="brand-info">
+          <h1>MAGARETTO <span class="brand-badge">PICKING Y CAJAS</span></h1>
+          <div class="brand-sub">Sistema de Registro de Cajas y Liquidación de Destajo</div>
+        </div>
+      </div>
+
+      <!-- Pestañas de Navegación -->
+      <nav class="nav-tabs" id="mainNavTabs">
+        <button class="nav-tab active" data-tab="tab-scanner" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
+          <i class="fa-solid fa-barcode"></i> Estación Escáner
+        </button>
+        <button class="nav-tab" data-tab="tab-waste" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
+          <i class="fa-solid fa-trash-can"></i> Descarte
+        </button>
+        <button class="nav-tab" data-tab="tab-dashboard" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
+          <i class="fa-solid fa-chart-pie"></i> Tablero / Dashboard
+        </button>
+        <button class="nav-tab" data-tab="tab-employees" data-roles="Administrador,Ejecutivo,RRHH">
+          <i class="fa-solid fa-users"></i> Personal
+        </button>
+        <button class="nav-tab" data-tab="tab-production" data-roles="Administrador,Ejecutivo,RRHH">
+          <i class="fa-solid fa-chart-line"></i> Producción en Vivo
+        </button>
+        <button class="nav-tab" data-tab="tab-payroll" data-roles="Administrador,Ejecutivo,RRHH">
+          <i class="fa-solid fa-money-bill-wave"></i> Liquidación RRHH
+        </button>
+        <button class="nav-tab" data-tab="tab-users" data-roles="Administrador" style="display:none;">
+          <i class="fa-solid fa-user-shield"></i> Usuarios
+        </button>
+        <button class="nav-tab" data-tab="tab-settings" data-roles="Administrador,Ejecutivo,RRHH">
+          <i class="fa-solid fa-gear"></i> Configuración
+        </button>
+      </nav>
+
+      <!-- Estado de Conexión, Usuario & Sonido -->
+      <div class="header-actions">
+        
+        <!-- Indicador Base de Datos -->
+        <div class="connection-status" id="connectionBadge" title="Estado de sincronización con la base de datos">
+          <div class="status-dot" id="connectionDot"></div>
+          <span id="connectionText">Base de Datos En Línea</span>
+        </div>
+
+        <!-- Chip de Usuario Autenticado & Cerrar Sesión -->
+        <div class="user-session-chip" id="userSessionChip" style="display:none;">
+          <div class="user-session-avatar">
+            <i class="fa-solid fa-user-check"></i>
+          </div>
+          <div class="user-session-info">
+            <span class="user-session-name" id="sessionUserName">Admin</span>
+            <span class="user-session-role role-admin" id="sessionUserRole">Administrador</span>
+          </div>
+          <button type="button" class="btn-logout" id="btnLogout" title="Cerrar Sesión">
+            <i class="fa-solid fa-right-from-bracket"></i>
+          </button>
+        </div>
+
+        <!-- Controles de Sonido Beep -->
+        <div class="audio-controls" title="Prueba sonora para la pistola lectora">
+          <button class="btn-test-sound" id="btnTestBeep">
+            <i class="fa-solid fa-volume-high"></i> Probar Beep
+          </button>
+          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.05" value="0.9" title="Volumen de audio">
+        </div>
+
+      </div>
+
+    </div>
+  </header>
+
+  <!-- CONTENEDOR PRINCIPAL -->
+  <main class="main-container">
+
+    <!-- ========================================================================
+         TAB 1: ESTACIÓN DE ESCÁNER (VISTA OPERADOR Y VISTA EJECUTIVA)
+         ======================================================================== -->
+    <div class="tab-content active" id="tab-scanner">
+      
+      <!-- KPI SUMMARY BAR COMPACTO (Exclusivo de Estación Escáner) -->
+      <div class="kpi-compact-strip">
+        <div class="kpi-chip">
+          <div class="kpi-chip-icon blue"><i class="fa-solid fa-box-archive"></i></div>
+          <div class="kpi-chip-data">
+            <span class="kpi-chip-label">Cajas Hoy</span>
+            <div style="display:flex; align-items:baseline; gap:0.4rem;">
+              <span class="kpi-chip-val" id="kpiTotalCajas">0</span>
+              <span id="kpiTotalHistorico" style="font-size:0.75rem; color:#94a3b8; font-weight:700;">(Histórico: 0)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-chip">
+          <div class="kpi-chip-icon green"><i class="fa-solid fa-user-check"></i></div>
+          <div class="kpi-chip-data">
+            <span class="kpi-chip-label">Empacadores</span>
+            <span class="kpi-chip-val" id="kpiEmpacadoresActivos">0</span>
+          </div>
+        </div>
+
+        <div class="kpi-chip">
+          <div class="kpi-chip-icon yellow"><i class="fa-solid fa-gauge-high"></i></div>
+          <div class="kpi-chip-data">
+            <span class="kpi-chip-label">Ritmo Planta</span>
+            <span class="kpi-chip-val" id="kpiRitmoHora">0 <small style="font-size:0.7rem; font-weight:normal;">c/h</small></span>
+          </div>
+        </div>
+
+        <div class="kpi-chip">
+          <div class="kpi-chip-icon amber"><i class="fa-solid fa-trophy"></i></div>
+          <div class="kpi-chip-data">
+            <span class="kpi-chip-label">Líder Turno</span>
+            <span class="kpi-chip-val" id="kpiLiderNombre" style="font-size:0.95rem; max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">-</span>
+          </div>
+        </div>
+
+        <!-- 5to KPI: Tipo de Envase Activo de la Jornada (A la derecha del último KPI) -->
+        <div class="kpi-chip kpi-chip-envase" id="kpiChipEnvase" style="cursor:pointer;" onclick="switchTab('tab-settings')" title="Haga clic para cambiar los envases en Configuración">
+          <div class="kpi-chip-icon cyan"><i class="fa-solid fa-boxes-packing"></i></div>
+          <div class="kpi-chip-data">
+            <span class="kpi-chip-label">Envases Jornada</span>
+            <span class="kpi-chip-val" id="kpiEnvaseActivo" style="display:flex; flex-direction:column; gap:2px; line-height:1.15; overflow:hidden;" title="1ª: Caja 10 kgs. · 2ª: Caja 10 kgs.">
+              <span style="color:#38bdf8; font-size:0.75rem; font-weight:800; white-space:nowrap;">1ª: <strong>Caja 10 kgs.</strong></span>
+              <span style="color:#34d399; font-size:0.75rem; font-weight:800; white-space:nowrap;">2ª: <strong>Caja 10 kgs.</strong></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VISTA OPERADOR (MESA DE ESCANEO DE CÓDIGOS DE BARRA)
+           ==================================================================== -->
+      <div id="operatorScannerView">
+
+        <!-- Barra Compacta del Lector de Código de Barras -->
+        <div class="scanner-compact-bar" id="scannerBox">
+          <div class="scanner-badge-pill">
+            <div class="scanner-pulse-light"></div>
+            <span>LISTO</span>
+          </div>
+
+          <form id="barcodeScanForm" onsubmit="return false;" style="flex:1; display:flex; gap:0.5rem; align-items:center;">
+            <input 
+              type="text" 
+              id="barcodeInput" 
+              class="barcode-compact-input" 
+              placeholder="ESCANEAR CÓDIGO DE BARRA DE LA CAJA AQUÍ..." 
+              autocomplete="off" 
+              autofocus
+            >
+            <button type="button" class="btn-camera-scan-compact" id="btnOpenMobileCamera" title="Abrir cámara del celular para escanear código">
+              <i class="fa-solid fa-camera"></i> <span class="btn-cam-text">Cámara</span>
+            </button>
+            <button type="button" class="btn-manual-scan-compact" id="btnManualRegisterModal" title="Colocar caja manualmente si la etiqueta está rota">
+              <i class="fa-solid fa-hand"></i> Colocar manualmente
+            </button>
+          </form>
+
+          <div class="scanner-status-right">
+            <span id="syncQueueCounter" style="font-weight:700; font-size:0.8rem; color:#38bdf8; display:flex; align-items:center; gap:0.35rem;">
+              <i class="fa-solid fa-cloud-arrow-up"></i> Sync
+            </span>
+          </div>
+        </div>
+
+        <!-- Cuadrícula Principal: Tarjeta Gigante de Última Caja + Flujo en Vivo -->
+        <div class="scanner-view-grid">
+          
+          <!-- Panel Izquierdo: Tarjeta de Última Caja Escaneada -->
+          <div class="last-scan-hero-card" id="lastScanHeroCard">
+            
+            <!-- Estado Vacío Inicial -->
+            <div class="last-scan-empty-state" id="lastScanEmpty">
+              <div class="icon"><i class="fa-solid fa-box-open"></i></div>
+              <h3>Esperando Primera Lectura</h3>
+              <p>Dispare la pistola lectora sobre cualquier caja para registrarla en Supabase.</p>
+            </div>
+
+            <!-- Contenido Cuando se Escanea -->
+            <div class="last-scan-content" id="lastScanContent">
+              <div class="last-scan-top-row">
+                <div class="scan-status-badge success" id="heroStatusBadge">
+                  <i class="fa-solid fa-circle-check"></i> CAJA REGISTRADA CORRECTAMENTE
+                </div>
+                <div class="scan-timestamp" id="heroTimestamp">--:--:--</div>
+              </div>
+
+              <div class="employee-hero-name" id="heroEmployeeName">Nombre del Empleado</div>
+              <div class="employee-hero-code" id="heroEmployeeCode">
+                <i class="fa-solid fa-id-badge"></i> <span id="heroCodeText">BAC-001</span>
+                <span style="color:var(--text-muted); font-size:0.85rem">| <span id="heroDniText">DNI: -</span></span>
+              </div>
+
+              <!-- Resumen de Acumulado de la Caja Leída (Ej: Juan Pérez 10 cajas - 22/08/26) -->
+              <div class="hero-accum-statement" id="heroAccumStatement">
+                <i class="fa-solid fa-boxes-stacked" style="color:var(--accent-garlic);"></i>
+                <span id="heroAccumText" style="font-weight:800; font-size:1.15rem; color:#ffffff;">-</span>
+              </div>
+
+              <div class="scan-hero-stats-row">
+                <div class="hero-stat-item">
+                  <div class="hero-stat-label">Cajas Acumuladas Hoy</div>
+                  <div class="hero-stat-value highlight-green" id="heroEmpBoxCount">0</div>
+                </div>
+                <div class="hero-stat-item">
+                  <div class="hero-stat-label">Fecha y Turno</div>
+                  <div class="hero-stat-value highlight-yellow" id="heroEmpDateShift">--/--/--</div>
+                </div>
+                <div class="hero-stat-item">
+                  <div class="hero-stat-label">Código Leído</div>
+                  <div class="hero-stat-value" id="heroBarcodeRead">-</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Panel Derecho: Acumulado de Cajas por Empleado + Flujo en Vivo -->
+          <div class="side-card">
+            <div class="card-header">
+              <div class="side-tab-buttons">
+                <button type="button" class="btn-side-tab active" id="btnTabEmpAccum">
+                  <i class="fa-solid fa-users-viewfinder"></i> Acumulado por Empleado
+                </button>
+                <button type="button" class="btn-side-tab" id="btnTabLiveFeed">
+                  <i class="fa-solid fa-clock-rotate-left"></i> Historial en Vivo
+                </button>
+              </div>
+              <span style="font-size:0.75rem; color:var(--text-secondary);" id="liveScanCountBadge">0 cajas hoy</span>
+            </div>
+            <div class="card-body" style="padding:0;">
+              
+              <!-- Vista 1: Acumulado por Empleado (Visible por defecto) -->
+              <div class="live-scans-scroll" id="empAccumulatedList">
+                <div style="text-align:center; padding:3rem 1rem; color:var(--text-muted);">
+                  <i class="fa-solid fa-boxes-stacked" style="font-size:2rem; margin-bottom:0.5rem; display:block;"></i>
+                  Cargando acumulados por empleado...
+                </div>
+              </div>
+
+              <!-- Vista 2: Historial Individual de Escaneos -->
+              <div class="live-scans-scroll" id="liveScansList" style="display:none;">
+                <div style="text-align:center; padding:3rem 1rem; color:var(--text-muted);">
+                  <i class="fa-solid fa-list-check" style="font-size:2rem; margin-bottom:0.5rem; display:block;"></i>
+                  No hay escaneos recientes en esta sesión.
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ====================================================================
+           VISTA EJECUTIVA (TABLERO MÓVIL Y EJECUTIVO DE ALTA GERENCIA)
+           ==================================================================== -->
+      <div class="executive-dashboard-view" id="executiveStationView" style="display:none;">
+        
+        <!-- Tarjeta Hero Gigante: Total Cajas Hoy -->
+        <div class="exec-hero-card">
+          <div class="exec-hero-header">
+            <div class="exec-live-badge">
+              <span class="pulse-dot"></span> EN VIVO
+            </div>
+            <div class="exec-date-badge" id="execCurrentDate">Hoy</div>
+          </div>
+          
+          <div class="exec-hero-body">
+            <div class="exec-hero-number" id="execTotalCajas">0</div>
+            <div class="exec-hero-label">CAJAS EMPACADAS HOY</div>
+          </div>
+
+          <!-- Barra de Calidad Minimalista -->
+          <div class="exec-quality-bar-wrap">
+            <div class="exec-quality-labels">
+              <span id="execQuality1Label"><i class="fa-solid fa-medal" style="color:#38bdf8;"></i> Primera: 0 (0%)</span>
+              <span id="execQuality2Label"><i class="fa-solid fa-box-archive" style="color:#f59e0b;"></i> Estándar: 0 (0%)</span>
+            </div>
+            <div class="exec-quality-progress">
+              <div class="exec-quality-fill" id="execQualityFill" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mini Tarjetas de Métricas Clave (2x2) -->
+        <div class="exec-metrics-grid">
+          <div class="exec-mini-card">
+            <div class="exec-mini-icon speed"><i class="fa-solid fa-gauge-high"></i></div>
+            <div class="exec-mini-data">
+              <span class="exec-mini-val" id="execRitmoHora">0 <small style="font-size:0.65rem; font-weight:normal;">c/h</small></span>
+              <span class="exec-mini-title">Ritmo Planta</span>
+            </div>
+          </div>
+
+          <div class="exec-mini-card">
+            <div class="exec-mini-icon users"><i class="fa-solid fa-user-check"></i></div>
+            <div class="exec-mini-data">
+              <span class="exec-mini-val" id="execEmpacadoresActivos">0</span>
+              <span class="exec-mini-title">Empacadores</span>
+            </div>
+          </div>
+
+          <div class="exec-mini-card">
+            <div class="exec-mini-icon trophy"><i class="fa-solid fa-trophy"></i></div>
+            <div class="exec-mini-data">
+              <span class="exec-mini-val" id="execLiderTurno" style="font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">-</span>
+              <span class="exec-mini-title">Líder Turno</span>
+            </div>
+          </div>
+
+          <div class="exec-mini-card">
+            <div class="exec-mini-icon clock"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            <div class="exec-mini-data">
+              <span class="exec-mini-val" id="execUltimaCajaHora">--:--</span>
+              <span class="exec-mini-title">Último Registro</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Listado de Acumulados por Empacador -->
+        <div class="exec-section-card">
+          <div class="exec-section-header">
+            <div class="exec-section-title">
+              <i class="fa-solid fa-users-viewfinder" style="color:#38bdf8;"></i>
+              <span>Acumulado por Empacador</span>
+            </div>
+            <span class="exec-section-badge" id="execTotalEmployeesBadge">0 empacadores hoy</span>
+          </div>
+
+          <div class="exec-emp-list" id="execEmployeeAccumList">
+            <!-- Items renderizados dinámicamente -->
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB: DESCARTE (REGISTRO MANUAL DE CAJAS DE DESCARTE)
+         ======================================================================== -->
+    <div class="tab-content" id="tab-waste" style="display:none;">
+      
+      <!-- Header Superior de Descarte -->
+      <div class="dash-header-bar">
+        <div class="dash-header-title">
+          <div class="dash-title-icon" style="background: rgba(249, 115, 22, 0.15); color: #fb923c;">
+            <i class="fa-solid fa-trash-can"></i>
+          </div>
+          <div>
+            <h2 class="dash-title">Registro Manual de Cajas de Descarte</h2>
+            <div class="dash-subtitle">Carga manual de cajas descartadas por personal, fecha y hora. Calidad asignada fija: <strong>DESCARTE</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tarjeta de Formulario de Ingreso de Descarte -->
+      <div class="dash-filters-card" style="margin-bottom: 1.5rem;">
+        <div class="dash-filters-header">
+          <div class="dash-filters-title">
+            <i class="fa-solid fa-circle-plus" style="color: #fb923c;"></i> Nuevo Ingreso de Descarte
+          </div>
+        </div>
+
+        <form id="formWasteEntry" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.25rem; align-items: flex-end; padding: 1.25rem;">
+          
+          <!-- Personal con buscador -->
+          <div class="dash-filter-item" style="grid-column: span 2; min-width: 280px;">
+            <label class="dash-filter-label" for="wasteEmployeeSelect">
+              <i class="fa-solid fa-user"></i> Personal (Menú Desplegable con Buscador)
+            </label>
+            <div style="display: flex; gap: 0.5rem; flex-direction: column;">
+              <div style="position: relative; width: 100%;">
+                <input 
+                  type="text" 
+                  id="wasteEmployeeSearch" 
+                  class="dash-input" 
+                  placeholder="🔍 Escribe para buscar por nombre, código (ej: 0101) o DNI..." 
+                  autocomplete="off"
+                  style="width: 100%; padding-right: 36px; height: 42px;"
+                >
+                <button 
+                  type="button" 
+                  id="btnResetWasteSearch" 
+                  style="display:none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; font-size: 1rem;"
+                  title="Limpiar búsqueda"
+                >
+                  <i class="fa-solid fa-circle-xmark"></i>
+                </button>
+              </div>
+              <select id="wasteEmployeeSelect" class="dash-input" required style="font-weight: 700; height: 42px; color: #ffffff;">
+                <option value="" disabled selected>-- Selecciona un empacador --</option>
+              </select>
+            </div>
+            <div id="wasteSearchMatchCount" style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.35rem; font-weight: 600;"></div>
+          </div>
+
+          <!-- Fecha -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label" for="wasteDate">
+              <i class="fa-regular fa-calendar"></i> Fecha del Movimiento
+            </label>
+            <input type="date" id="wasteDate" class="dash-input" required style="height: 42px;">
+          </div>
+
+          <!-- Hora -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label" for="wasteTime">
+              <i class="fa-regular fa-clock"></i> Hora del Movimiento
+            </label>
+            <input type="time" id="wasteTime" class="dash-input" required style="height: 42px;">
+          </div>
+
+          <!-- Cantidad de Cajas -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label" for="wasteQuantity">
+              <i class="fa-solid fa-boxes-stacked"></i> Cantidad de Cajas
+            </label>
+            <input type="number" id="wasteQuantity" class="dash-input" min="1" max="9999" value="1" required style="font-weight: 800; font-size: 1.2rem; color: #fb923c; font-family: var(--font-mono);">
+          </div>
+
+          <!-- Calidad Asignada (Fija Descarte) -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label">
+              <i class="fa-solid fa-award"></i> Calidad Automática
+            </label>
+            <div class="dash-input" style="background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.4); color: #fb923c; font-weight: 800; display: flex; align-items: center; gap: 0.5rem; height: 40px;">
+              <i class="fa-solid fa-trash-can"></i> DESCARTE
+            </div>
+          </div>
+
+          <!-- Botón de Registro -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label">&nbsp;</label>
+            <button type="submit" class="btn-primary" id="btnSubmitWaste" style="width: 100%; height: 42px; background: linear-gradient(135deg, #ea580c, #c2410c); border: none; font-weight: 800;">
+              <i class="fa-solid fa-plus-circle"></i> Registrar Cajas de Descarte
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+      <!-- Tabla de Registros de Descarte -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <div class="dash-card-title">
+            <i class="fa-solid fa-clock-rotate-left" style="color: #fb923c;"></i> Historial de Cajas de Descarte
+          </div>
+          <span class="dash-card-badge" id="wasteCountBadge">0 cajas de descarte</span>
+        </div>
+        <div class="dash-card-body" style="padding: 0;">
+          <div class="table-responsive">
+            <table class="data-table" id="wasteTable">
+              <thead>
+                <tr>
+                  <th>Fecha y Hora</th>
+                  <th>Personal</th>
+                  <th>Cód. Emp.</th>
+                  <th style="text-align: center;">Cantidad</th>
+                  <th style="text-align: center;">Calidad</th>
+                  <th>Origen Registro</th>
+                  <th style="text-align: center; width: 90px;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="wasteTableBody">
+                <!-- Renglones inyectados dinámicamente -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB DASHBOARD: TABLERO INTEGRAL DE ESTADÍSTICAS Y RENDIMIENTO DE PICKING
+         ======================================================================== -->
+    <div class="tab-content" id="tab-dashboard" style="display:none;">
+
+      <!-- Header Superior del Dashboard -->
+      <div class="dash-header-bar">
+        <div class="dash-header-title">
+          <div class="dash-title-icon">
+            <i class="fa-solid fa-chart-pie"></i>
+          </div>
+          <div>
+            <h2 class="dash-title">Tablero Analítico de Picking</h2>
+            <div class="dash-subtitle">Estadísticas en tiempo real, desglose por calidad/envase y ranking de empacadores</div>
+          </div>
+        </div>
+        <div class="dash-header-actions">
+          <button type="button" class="btn-secondary" id="btnRefreshDashboard" title="Recargar estadísticas">
+            <i class="fa-solid fa-arrows-rotate"></i> Actualizar
+          </button>
+          <button type="button" class="btn-primary" id="btnExportDashboardExcel" onclick="DashboardManager.exportExcel()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #059669; color:#ffffff; font-weight:700;" title="Exportar reporte detallado a formato Excel (.xlsx)">
+            <i class="fa-solid fa-file-excel"></i> Exportar Excel
+          </button>
+          <button type="button" class="btn-secondary" id="btnExportDashboardCSV" onclick="DashboardManager.exportCSV()" title="Exportar datos a CSV">
+            <i class="fa-solid fa-file-csv"></i> Exportar CSV
+          </button>
+          <button type="button" class="btn-secondary" id="btnPrintDashboard" onclick="window.print()" title="Imprimir reporte del tablero">
+            <i class="fa-solid fa-print"></i> Imprimir Reporte
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjeta de Filtros Multicriterio -->
+      <div class="dash-filters-card">
+        <div class="dash-filters-header">
+          <div class="dash-filters-title">
+            <i class="fa-solid fa-sliders"></i> Filtros Multicriterio de Consulta
+          </div>
+          <div class="dash-filters-badge" id="dashFilteredCountBadge">
+            0 cajas encontradas
+          </div>
+        </div>
+
+        <!-- Fila 1: Selectores Desplegables Principales -->
+        <div class="dash-filters-row-main">
+          <!-- Período Rápido -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label" for="dashFilterPeriod">
+              <i class="fa-regular fa-calendar-check"></i> Período
+            </label>
+            <select id="dashFilterPeriod" class="dash-input">
+              <option value="este_mes" selected>Este Mes (Recomendado)</option>
+              <option value="hoy">Hoy</option>
+              <option value="ayer">Ayer</option>
+              <option value="esta_semana">Esta Semana</option>
+              <option value="ultimos_30">Últimos 30 Días</option>
+              <option value="todo">Todo el Histórico</option>
+              <option value="personalizado">Rango Personalizado</option>
+            </select>
+          </div>
+
+          <!-- Fecha Desde (se muestra si es Personalizado) -->
+          <div class="dash-filter-item" id="dashFilterFromWrap" style="display:none;">
+            <label class="dash-filter-label" for="dashFilterDateFrom">
+              <i class="fa-regular fa-calendar"></i> Desde
+            </label>
+            <input type="date" id="dashFilterDateFrom" class="dash-input">
+          </div>
+
+          <!-- Fecha Hasta (se muestra si es Personalizado) -->
+          <div class="dash-filter-item" id="dashFilterToWrap" style="display:none;">
+            <label class="dash-filter-label" for="dashFilterDateTo">
+              <i class="fa-regular fa-calendar"></i> Hasta
+            </label>
+            <input type="date" id="dashFilterDateTo" class="dash-input">
+          </div>
+
+          <!-- Calidad (Multi-Selección) -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label">
+              <i class="fa-solid fa-award"></i> Calidad (Múltiple)
+            </label>
+            <div class="dash-multiselect-wrap" id="wrapDashFilterQuality">
+              <button type="button" class="dash-multiselect-btn" id="btnDashFilterQuality">
+                <span class="dash-multiselect-label-text" id="labelDashFilterQuality">Todas las Calidades</span>
+                <i class="fa-solid fa-chevron-down dash-multiselect-chevron"></i>
+              </button>
+              <div class="dash-multiselect-dropdown" id="dropdownDashQuality">
+                <div class="dash-multiselect-actions">
+                  <button type="button" class="dash-multiselect-action-btn" id="btnQualitySelectAll">Seleccionar Todas</button>
+                  <button type="button" class="dash-multiselect-action-btn" id="btnQualityClear">Limpiar</button>
+                </div>
+                <div class="dash-multiselect-list" id="listDashQuality">
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="000" checked>
+                    <span class="dash-multiselect-item-badge">000</span>
+                    <span>Primera</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="002" checked>
+                    <span class="dash-multiselect-item-badge" style="background:rgba(52,211,153,0.18); color:#34d399;">002</span>
+                    <span>Segunda</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="003" checked>
+                    <span class="dash-multiselect-item-badge" style="background:rgba(167,139,250,0.18); color:#c084fc;">003</span>
+                    <span>Araña</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="DESCARTE" checked>
+                    <span class="dash-multiselect-item-badge" style="background:rgba(249,115,22,0.18); color:#fb923c;">DESC</span>
+                    <span>Descarte</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tipo de Envase (Multi-Selección) -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label">
+              <i class="fa-solid fa-box"></i> Tipo Envase (Múltiple)
+            </label>
+            <div class="dash-multiselect-wrap" id="wrapDashFilterBoxType">
+              <button type="button" class="dash-multiselect-btn" id="btnDashFilterBoxType">
+                <span class="dash-multiselect-label-text" id="labelDashFilterBoxType">Todos los Envases</span>
+                <i class="fa-solid fa-chevron-down dash-multiselect-chevron"></i>
+              </button>
+              <div class="dash-multiselect-dropdown" id="dropdownDashBoxType">
+                <div class="dash-multiselect-actions">
+                  <button type="button" class="dash-multiselect-action-btn" id="btnBoxTypeSelectAll">Seleccionar Todos</button>
+                  <button type="button" class="dash-multiselect-action-btn" id="btnBoxTypeClear">Limpiar</button>
+                </div>
+                <div class="dash-multiselect-list" id="listDashBoxType">
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="Caja 10 kgs." checked>
+                    <span>Caja 10 kgs.</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="Caja 14 kgs." checked>
+                    <span>Caja 14 kgs.</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="Caja Araña" checked>
+                    <span>Caja Araña</span>
+                  </label>
+                  <label class="dash-multiselect-item">
+                    <input type="checkbox" value="Descarte" checked>
+                    <span>Descarte</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Turno -->
+          <div class="dash-filter-item">
+            <label class="dash-filter-label" for="dashFilterShift">
+              <i class="fa-solid fa-clock"></i> Turno
+            </label>
+            <select id="dashFilterShift" class="dash-input">
+              <option value="todos">Todos los Turnos</option>
+              <option value="manana">Mañana (06 - 14 hs)</option>
+              <option value="tarde">Tarde (14 - 22 hs)</option>
+              <option value="noche">Noche (22 - 06 hs)</option>
+            </select>
+          </div>
+
+          <!-- Empacador (Multi-Selección con Buscador) -->
+          <div class="dash-filter-item" style="flex: 1.3; min-width: 220px;">
+            <label class="dash-filter-label">
+              <i class="fa-solid fa-user"></i> Empacador (Múltiple)
+            </label>
+            <div class="dash-multiselect-wrap" id="wrapDashFilterEmployee">
+              <button type="button" class="dash-multiselect-btn" id="btnDashFilterEmployee">
+                <span class="dash-multiselect-label-text" id="labelDashFilterEmployee">Todos los Empacadores</span>
+                <i class="fa-solid fa-chevron-down dash-multiselect-chevron"></i>
+              </button>
+              <div class="dash-multiselect-dropdown" id="dropdownDashEmployee">
+                <!-- Buscador de empacadores -->
+                <div class="dash-multiselect-search-box">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="dashPackerSearchInput" class="dash-multiselect-search-input" placeholder="Buscar por código o nombre...">
+                </div>
+                <div class="dash-multiselect-actions">
+                  <button type="button" class="dash-multiselect-action-btn" id="btnEmployeeSelectAll">Seleccionar Todos</button>
+                  <button type="button" class="dash-multiselect-action-btn" id="btnEmployeeClear">Limpiar</button>
+                </div>
+                <!-- Menú desplegable con todos los empacadores -->
+                <div class="dash-multiselect-list" id="listDashEmployee">
+                  <!-- Generado dinámicamente -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fila 2: Búsqueda Rápida en Vivo y Botón Limpiar -->
+        <div class="dash-filters-row-actions">
+          <div class="dash-search-wrap">
+            <i class="fa-solid fa-magnifying-glass dash-search-icon"></i>
+            <input type="text" id="dashSearchInput" class="dash-input dash-search-input-field" placeholder="Filtrar en vivo por código 7 dígitos, empacador, DNI o envase...">
+          </div>
+          <button type="button" class="btn-secondary dash-btn-reset-filters" id="btnResetDashboardFilters">
+            <i class="fa-solid fa-rotate-left"></i> Restablecer Filtros
+          </button>
+        </div>
+      </div>
+
+      <!-- Notificación inteligente de período cuando hoy está en 0 pero hay histórico -->
+      <div id="dashPeriodNotice" style="display:none;"></div>
+
+      <!-- Grid de KPIs Principales -->
+      <div class="dash-kpi-grid">
+        <!-- KPI 1: Total Cajas -->
+        <div class="dash-kpi-card blue">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-boxes-stacked"></i>
+            </div>
+            <span class="dash-kpi-tag">TOTAL CAJAS</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiTotalBoxes">0</div>
+          <div class="dash-kpi-sub">
+            <i class="fa-solid fa-circle-check" style="color:#60a5fa;"></i> Cajas en período filtrado
+          </div>
+        </div>
+
+        <!-- KPI 2: Primera Calidad -->
+        <div class="dash-kpi-card cyan">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-award"></i>
+            </div>
+            <span class="dash-kpi-tag">PRIMERA (01)</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiPrimeraBoxes">0</div>
+          <div class="dash-kpi-sub">
+            <span class="dash-pill-pct cyan" id="dashKpiPrimeraPct">0%</span> de la producción
+          </div>
+        </div>
+
+        <!-- KPI 3: Segunda Calidad -->
+        <div class="dash-kpi-card green">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-certificate"></i>
+            </div>
+            <span class="dash-kpi-tag">SEGUNDA (02)</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiSegundaBoxes">0</div>
+          <div class="dash-kpi-sub">
+            <span class="dash-pill-pct green" id="dashKpiSegundaPct">0%</span> de la producción
+          </div>
+        </div>
+
+        <!-- KPI: Araña (03) -->
+        <div class="dash-kpi-card violet">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-bug"></i>
+            </div>
+            <span class="dash-kpi-tag">ARAÑA (03)</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiAranaBoxes">0</div>
+          <div class="dash-kpi-sub">
+            <span class="dash-pill-pct violet" id="dashKpiAranaPct">0%</span> de la producción
+          </div>
+        </div>
+
+        <!-- KPI: Descarte -->
+        <div class="dash-kpi-card orange">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <span class="dash-kpi-tag">DESCARTE</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiDescarteBoxes">0</div>
+          <div class="dash-kpi-sub">
+            <span class="dash-pill-pct orange" id="dashKpiDescartePct">0%</span> de la producción
+          </div>
+        </div>
+
+        <!-- KPI 4: Personal Activo -->
+        <div class="dash-kpi-card purple">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-users"></i>
+            </div>
+            <span class="dash-kpi-tag">PERSONAL ACTIVO</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiActiveEmployees">0</div>
+          <div class="dash-kpi-sub" id="dashKpiAvgBoxesPerEmp">
+            Promedio: 0 cj/empacador
+          </div>
+        </div>
+
+        <!-- KPI 5: Ritmo Promedio de Picking -->
+        <div class="dash-kpi-card amber">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-bolt"></i>
+            </div>
+            <span class="dash-kpi-tag">RITMO PICKING</span>
+          </div>
+          <div class="dash-kpi-value" id="dashKpiBoxesPerHour">0</div>
+          <div class="dash-kpi-sub">
+            cajas / hora de jornada activa
+          </div>
+        </div>
+
+        <!-- KPI 6: Líder de Picking -->
+        <div class="dash-kpi-card gold">
+          <div class="dash-kpi-top">
+            <div class="dash-kpi-icon">
+              <i class="fa-solid fa-crown"></i>
+            </div>
+            <span class="dash-kpi-tag">LÍDER PICKING</span>
+          </div>
+          <div class="dash-kpi-value dash-kpi-leader" id="dashKpiTopPackerName">-</div>
+          <div class="dash-kpi-sub" id="dashKpiTopPackerCount">
+            0 cajas registradas
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid de Análisis: Matriz Calidad × Envase & Cajas por Turno -->
+      <div class="dash-analytics-grid">
+        <!-- Matriz Calidad × Envase -->
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <div class="dash-card-title">
+              <i class="fa-solid fa-layer-group" style="color:#38bdf8;"></i> Cantidades por Calidad y Tipo de Envase
+            </div>
+            <span class="dash-card-badge">DESGLOSE DETALLADO</span>
+          </div>
+          <div class="dash-card-body">
+            <div class="dash-matrix-grid" id="dashMatrixContainer">
+              <!-- Cards dinámicas inyectadas vía JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Distribución por Turno -->
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <div class="dash-card-title">
+              <i class="fa-solid fa-clock" style="color:#fbbf24;"></i> Cajas por Turno Operativo
+            </div>
+            <span class="dash-card-badge">JORNADA DIARIA</span>
+          </div>
+          <div class="dash-card-body">
+            <div class="dash-shift-list" id="dashShiftContainer">
+              <!-- Items de turnos inyectados vía JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evolución de Picking por Hora (Curva de Productividad) -->
+      <div class="dash-card" style="margin-bottom: 1.5rem;">
+        <div class="dash-card-header">
+          <div class="dash-card-title">
+            <i class="fa-solid fa-chart-column" style="color:#34d399;"></i> Evolución de Picking por Hora del Día
+          </div>
+          <span class="dash-card-badge">CURVA DE PRODUCTIVIDAD</span>
+        </div>
+        <div class="dash-card-body" style="padding-bottom: 1.5rem;">
+          <div class="dash-hourly-chart" id="dashHourlyChart">
+            <!-- Barras generadas dinámicamente vía JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Cantidad de Cajas por Empleado -->
+      <div class="dash-card" style="margin-bottom: 1.5rem;">
+        <div class="dash-card-header">
+          <div class="dash-card-title">
+            <i class="fa-solid fa-ranking-star" style="color:#facc15;"></i> Ranking y Cantidad de Cajas por Empacador
+          </div>
+          <span class="dash-card-badge" id="dashEmployeeTableCountBadge">0 empacadores</span>
+        </div>
+        <div class="dash-card-body" style="padding:0;">
+          <div class="table-responsive">
+            <table class="data-table" id="dashEmployeesTable">
+              <thead>
+                <tr>
+                  <th style="width:60px; text-align:center;">#</th>
+                  <th>Empacador</th>
+                  <th>Identificación</th>
+                  <th style="text-align:center;">Total Cajas</th>
+                  <th style="text-align:center;">Primera (01)</th>
+                  <th style="text-align:center;">Segunda (02)</th>
+                  <th style="text-align:center;">Araña (03)</th>
+                  <th style="text-align:center;">Descarte</th>
+                  <th>Envases Utilizados</th>
+                  <th style="text-align:center; width:120px;">% Planta</th>
+                  <th style="text-align:right;">Subtotal Est.</th>
+                </tr>
+              </thead>
+              <tbody id="dashEmployeesTableBody">
+                <!-- Renglones de empleados inyectados vía JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Últimos Registros Pickeados (Auditoría) -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <div class="dash-card-title">
+            <i class="fa-solid fa-list-check" style="color:#a855f7;"></i> Registro y Trazabilidad de Picking (Auditoría en Tiempo Real)
+          </div>
+          <span class="dash-card-badge" id="dashAuditCountBadge">ÚLTIMOS ESCANEOS</span>
+        </div>
+        <div class="dash-card-body" style="padding:0;">
+          <div class="table-responsive">
+            <table class="data-table" id="dashAuditTable">
+              <thead>
+                <tr>
+                  <th>Código de Barra (6 Dígitos)</th>
+                  <th>Correlativo</th>
+                  <th>Fecha y Hora</th>
+                  <th>Empacador</th>
+                  <th>Calidad</th>
+                  <th>Envase Registrado</th>
+                  <th>Línea / Origen</th>
+                </tr>
+              </thead>
+              <tbody id="dashAuditTableBody">
+                <!-- Renglones de auditoría inyectados vía JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB 2: PERSONAL & ETIQUETAS DE CÓDIGO DE BARRAS
+         ======================================================================== -->
+    <div class="tab-content" id="tab-employees">
+      
+      <div class="section-actions-bar">
+        <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+          <div class="search-input-wrapper">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="employeeSearchInput" class="search-input" placeholder="Buscar por nombre, código o DNI...">
+          </div>
+          <button class="btn-secondary" id="btnFilterActiveEmployees">
+            <i class="fa-solid fa-filter"></i> Solo Activos
+          </button>
+        </div>
+
+        <div style="display:flex; gap:0.75rem;">
+          <button class="btn-primary" id="btnNewEmployeeModal">
+            <i class="fa-solid fa-user-plus"></i> Nuevo Empacador
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabla de Empleados -->
+      <div class="table-responsive">
+        <table class="data-table" id="employeesTable">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre Completo</th>
+              <th>DNI</th>
+              <th>Teléfono</th>
+              <th>Tarifa / Caja</th>
+              <th>Estado</th>
+              <th>Cajas Hoy</th>
+              <th>Total Histórico</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="employeesTableBody">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB 3: MONITOR DE PRODUCCIÓN EN VIVO (RRHH)
+         ======================================================================== -->
+    <div class="tab-content" id="tab-production">
+      
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label class="filter-label">Período</label>
+          <select id="prodFilterPeriod" class="filter-select">
+            <option value="este_mes" selected>Este Mes (Recomendado)</option>
+            <option value="hoy">Hoy</option>
+            <option value="esta_semana">Esta Semana</option>
+            <option value="todo">Histórico Completo</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Turno</label>
+          <select id="prodFilterTurno" class="filter-select">
+            <option value="todos">Todos los Turnos</option>
+            <option value="Mañana">Turno Mañana</option>
+            <option value="Tarde">Turno Tarde</option>
+            <option value="Noche">Turno Noche</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Ordenar Por</label>
+          <select id="prodSortBy" class="filter-select">
+            <option value="cajas_desc">Más Cajas Primero</option>
+            <option value="cajas_asc">Menos Cajas Primero</option>
+            <option value="nombre">Nombre Alfabético</option>
+          </select>
+        </div>
+
+        <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem; color:var(--text-secondary); font-size:0.85rem;">
+          <i class="fa-solid fa-arrows-rotate fa-spin" style="color:#38bdf8;"></i> Actualización en vivo vía Supabase Realtime
+        </div>
+      </div>
+
+      <!-- Ranking de Productividad de Empacadores -->
+      <div class="side-card" style="margin-bottom:1.5rem;">
+        <div class="card-header">
+          <div class="card-title">
+            <i class="fa-solid fa-ranking-star" style="color:#fbbf24;"></i> Ranking de Producción de Hoy
+          </div>
+          <span style="font-size:0.8rem; color:var(--text-secondary);">Cajas embaladas por empleado</span>
+        </div>
+        <div class="card-body">
+          <div id="productionRankingsList" style="display:flex; flex-direction:column; gap:0.85rem;">
+            <!-- Barras de progreso de producción dinámicas -->
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB 4: LIQUIDACIÓN DE NÓMINA Y PAGO A DESTAJO (RRHH)
+         ======================================================================== -->
+    <div class="tab-content" id="tab-payroll">
+      
+      <!-- Barra de Filtros de Fechas -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label class="filter-label">Período Predefinido</label>
+          <select id="payrollPeriodSelect" class="filter-select">
+            <option value="este_mes" selected>Este Mes (Recomendado)</option>
+            <option value="hoy">Hoy</option>
+            <option value="ayer">Ayer</option>
+            <option value="esta_semana">Esta Semana</option>
+            <option value="ultimos_30">Últimos 30 Días</option>
+            <option value="todo">Histórico Completo</option>
+            <option value="personalizado">Rango Personalizado</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Desde</label>
+          <input type="date" id="payrollDateFrom" class="filter-date">
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Hasta</label>
+          <input type="date" id="payrollDateTo" class="filter-date">
+        </div>
+
+        <button class="btn-primary" id="btnApplyPayrollFilter" style="margin-top:auto;">
+          <i class="fa-solid fa-filter"></i> Calcular Liquidación
+        </button>
+
+        <div style="margin-left:auto; display:flex; gap:0.5rem; margin-top:auto;">
+          <button class="btn-success" id="btnExportPayrollCSV">
+            <i class="fa-solid fa-file-excel"></i> Exportar a Excel / CSV
+          </button>
+          <button class="btn-secondary" id="btnPrintPayrollReport">
+            <i class="fa-solid fa-print"></i> Imprimir Planilla
+          </button>
+        </div>
+      </div>
+
+      <!-- Banner de Resumen de Liquidación -->
+      <div class="payroll-summary-banner">
+        <div class="payroll-banner-info">
+          <h2><i class="fa-solid fa-calculator"></i> Liquidación de Pago por Cajas Embaladas</h2>
+          <p id="payrollBannerSubtitle">Período: Cargando cálculo...</p>
+        </div>
+        <div class="payroll-banner-total">
+          <div style="font-size:0.8rem; color:#bfdbfe; text-transform:uppercase; font-weight:700;">Total a Pagar en Nómina</div>
+          <div class="amount" id="payrollTotalAmount">$ 0.00</div>
+          <div style="font-size:0.85rem; color:#fef08a;" id="payrollTotalBoxesCount">0 cajas en total</div>
+        </div>
+      </div>
+
+      <!-- Tabla de Liquidación de Destajo por Empleado -->
+      <div class="table-responsive">
+        <table class="data-table" id="payrollTable">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre del Empleador / Empacador</th>
+              <th>DNI</th>
+              <th>Total Cajas</th>
+              <th style="text-align:right;">Tarifa Promedio</th>
+              <th style="text-align:right;">Total a Cobrar ($)</th>
+              <th style="text-align:center;">Primer Escaneo</th>
+              <th style="text-align:center;">Último Escaneo</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="payrollTableBody">
+            <!-- Filas dinámicas -->
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB 5: CONFIGURACIÓN & PARÁMETROS OPERATIVOS
+         ======================================================================== -->
+    <div class="tab-content" id="tab-settings">
+      
+      <!-- ====================================================================
+           CONFIGURACIÓN DE ENVASE DE JORNADA (1 SOLA LÍNEA HORIZONTAL)
+           Las únicas 4 opciones posibles (el operador solo debe seleccionar 1 de ellas):
+           1. Primera CAJA 10 KG
+           2. Primera CAJA 13 LIBRAS
+           3. Segunda CAJA 10 KG
+           4. Segunda BOLSA 20 KG
+           ==================================================================== -->
+      <div class="packing-config-horizontal-card" style="max-width:1200px; margin:0 auto 1.5rem;">
+        <div class="config-h-title">
+          <i class="fa-solid fa-boxes-packing" style="color:var(--accent-garlic); font-size:1.15rem;"></i>
+          <span>Envases de la Jornada:</span>
+        </div>
+        <div class="config-h-controls">
+          <!-- Selector Calidad Primera (000 / 01) -->
+          <div class="config-h-item">
+            <label for="selectEnvasePrimera" style="color:#38bdf8; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
+              <i class="fa-solid fa-medal"></i> 1ª (Primera):
+            </label>
+            <select id="selectEnvasePrimera" class="form-control config-h-select" style="color:#38bdf8; border-color:rgba(56,189,248,0.4) !important;">
+              <option value="Caja 10 kgs." selected>Caja 10 kgs.</option>
+              <option value="Caja 14 kgs.">Caja 14 kgs.</option>
+            </select>
+          </div>
+
+          <!-- Selector Calidad Segunda (002 / 02) -->
+          <div class="config-h-item">
+            <label for="selectEnvaseSegunda" style="color:#34d399; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
+              <i class="fa-solid fa-tags"></i> 2ª (Segunda):
+            </label>
+            <select id="selectEnvaseSegunda" class="form-control config-h-select" style="color:#34d399; border-color:rgba(52,211,153,0.4) !important;">
+              <option value="Caja 10 kgs." selected>Caja 10 kgs.</option>
+              <option value="Caja 14 kgs.">Caja 14 kgs.</option>
+            </select>
+          </div>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-muted); display:flex; align-items:center; gap:0.4rem; white-space:nowrap;">
+          <i class="fa-solid fa-circle-check" style="color:#10b981;"></i>
+          <span>Sincronizado en tiempo real</span>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:1.5rem; max-width:1200px; margin:0 auto;">
+        
+        <!-- Parámetros de Operación & Tarifa -->
+        <div class="side-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fa-solid fa-sliders" style="color:var(--accent-garlic);"></i> Parámetros de Operación de Planta
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label">Tarifa Base por Caja Embalada ($)</label>
+              <input type="number" id="cfgTarifaBase" class="form-control" value="150.00" step="1" min="0">
+              <div class="form-hint">Monto que se paga por defecto al empleado por cada caja registrada.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Tolerancia Anti-Duplicado (Segundos)</label>
+              <input type="number" id="cfgToleranciaDuplicado" class="form-control" value="5" min="1" max="60">
+              <div class="form-hint">Tiempo mínimo para permitir escanear el mismo código sin considerarlo error.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Línea o Mesa de Empaque por Defecto</label>
+              <input type="text" id="cfgLineaEmpaque" class="form-control" value="Línea 1 - Galpón Principal">
+            </div>
+
+            <button class="btn-primary" id="btnSaveParamsConfig" style="width:100%; margin-top:1rem;">
+              <i class="fa-solid fa-floppy-disk"></i> Guardar Parámetros
+            </button>
+          </div>
+        </div>
+
+        <!-- Estado del Sistema y Diagnóstico Operativo -->
+        <div class="side-card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fa-solid fa-server" style="color:#38bdf8;"></i> Estado del Sistema
+            </div>
+            <button class="btn-test-sound" id="btnTestSupabaseConnection">
+              <i class="fa-solid fa-plug"></i> Probar Conexión
+            </button>
+          </div>
+          <div class="card-body" style="display:flex; flex-direction:column; gap:1.25rem;">
+            
+            <div style="background:var(--bg-primary); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+              <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700; margin-bottom:0.35rem;">Sincronización en la Nube</div>
+              <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div class="status-dot"></div>
+                <span style="font-weight:700; color:#34d399; font-size:1rem;">Base de Datos Conectada</span>
+              </div>
+              <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.4rem;">
+                Las lecturas de la pistola se sincronizan en tiempo real con respaldo offline.
+              </div>
+            </div>
+
+            <div style="background:var(--bg-primary); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+              <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700; margin-bottom:0.35rem;">Audio & Feedback Sonoro</div>
+              <div style="font-size:0.85rem; color:var(--text-primary); margin-bottom:0.6rem;">
+                Sintetizador Web Audio API de latencia cero para ambiente de galpón.
+              </div>
+              <button class="btn-secondary" id="btnTestBeepSettings" style="width:100%;">
+                <i class="fa-solid fa-volume-high"></i> Emitir Beep de Prueba
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ========================================================================
+         TAB 6: GESTIÓN DE USUARIOS DEL SISTEMA (SOLO ADMINISTRADOR)
+         ======================================================================== -->
+    <div class="tab-content" id="tab-users">
+      <div class="section-actions-bar">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <h2 style="font-size:1.25rem; font-weight:800; color:white; margin:0;">
+            <i class="fa-solid fa-user-shield" style="color:#38bdf8;"></i> Gestión de Usuarios y Permisos
+          </h2>
+          <span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-size:0.75rem; font-weight:700; padding:0.2rem 0.5rem; border-radius:4px;">Exclusivo Administrador</span>
+        </div>
+        <button class="btn-primary" id="btnNewUserModal">
+          <i class="fa-solid fa-user-plus"></i> Nuevo Usuario
+        </button>
+      </div>
+
+      <!-- Tabla de Usuarios del Sistema -->
+      <div class="table-responsive">
+        <table class="data-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Nombre Completo</th>
+              <th>Rol / Nivel de Acceso</th>
+              <th>Estado</th>
+              <th>Fecha de Alta</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <!-- Filas dinámicas de usuarios -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ========================================================================
+       MODAL: NUEVO / EDITAR EMPLEADO
+       ======================================================================== -->
+  <div class="modal-backdrop" id="modalEmployee">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalEmployeeTitle"><i class="fa-solid fa-user-plus"></i> Nuevo Empacador</h3>
+        <button class="btn-close-modal" id="btnCloseEmployeeModal">&times;</button>
+      </div>
+      <form id="employeeForm">
+        <input type="hidden" id="empFormId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Código de Empacador (4 Dígitos)</label>
+            <input type="text" id="empFormCode" class="form-control" placeholder="Ej: 0121" maxlength="10" required style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;">
+            <div class="form-hint">Primeros 4 dígitos del código de barra de 8 dígitos (ej: 0121).</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Nombre y Apellido</label>
+            <input type="text" id="empFormName" class="form-control" placeholder="Ej: Carlos Rodríguez" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">DNI</label>
+            <input type="text" id="empFormDni" class="form-control" placeholder="Ej: 31.852.963">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Teléfono de Contacto</label>
+            <input type="text" id="empFormPhone" class="form-control" placeholder="+54 9 261 ...">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tarifa Especial por Caja ($) (Opcional)</label>
+            <input type="number" id="empFormRate" class="form-control" placeholder="Dejar vacío para usar tarifa general (150.00)" step="0.5">
+          </div>
+
+          <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+            <input type="checkbox" id="empFormActive" checked style="width:18px; height:18px; accent-color:#10b981;">
+            <label for="empFormActive" style="font-weight:700; font-size:0.9rem; cursor:pointer;">Empleado Activo en Planta</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelEmployeeModal">Cancelar</button>
+          <button type="submit" class="btn-primary"><i class="fa-solid fa-save"></i> Guardar Empleado</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: COLOCAR MANUALMENTE CAJA (CUANDO EL CÓDIGO ESTÁ ROTO)
+       ======================================================================== -->
+  <div class="modal-backdrop" id="modalManualScan">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-hand"></i> Colocar manualmente</h3>
+        <button class="btn-close-modal" id="btnCloseManualModal">&times;</button>
+      </div>
+      <form id="manualScanForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Seleccionar Empacador</label>
+            <select id="manualSelectEmployee" class="form-control" required style="font-size:1rem; font-weight:600;">
+              <!-- Opciones dinámicas de empleados -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Calidad de la Caja</label>
+            <select id="manualSelectCalidad" class="form-control" style="font-weight:700;">
+              <option value="000" selected>000 - Primera</option>
+              <option value="002">002 - Segunda</option>
+              <option value="003">003 - Araña</option>
+            </select>
+            <div class="form-hint" id="manualEnvaseHint">Se asignará el envase configurado para la jornada.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Cantidad de Cajas a Registrar</label>
+            <input type="number" id="manualBoxCount" class="form-control" value="1" min="1" max="50" required style="font-size:1.25rem; font-weight:800; font-family:var(--font-mono);">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Motivo de colocación manual</label>
+            <select id="manualReason" class="form-control">
+              <option value="etiqueta_danada">Etiqueta o código de barra dañado</option>
+              <option value="olvido_pegado">Empacador olvidó pegar la etiqueta</option>
+              <option value="correccion">Ajuste / Corrección de conteo</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelManualModal">Cancelar</button>
+          <button type="submit" class="btn-success"><i class="fa-solid fa-check"></i> Colocar cajas</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: RECIBO INDIVIDUAL DE LIQUIDACIÓN PARA IMPRIMIR
+       ======================================================================== -->
+  <div class="modal-backdrop" id="modalReceipt">
+    <div class="modal-card" style="max-width:650px;">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-receipt"></i> Recibo de Liquidación por Destajo</h3>
+        <button class="btn-close-modal" id="btnCloseReceiptModal">&times;</button>
+      </div>
+      <div class="modal-body" id="receiptPrintArea" style="background:#ffffff; color:#0f172a; padding:2rem; border-radius:var(--radius-md);">
+        <!-- Contenido del recibo generado dinámicamente -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btnCancelReceiptModal">Cerrar</button>
+        <button type="button" class="btn-primary" id="btnPrintReceiptBtn"><i class="fa-solid fa-print"></i> Imprimir Recibo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: NUEVO / EDITAR USUARIO DEL SISTEMA (SOLO ADMIN)
+       ======================================================================== -->
+  <div class="modal-backdrop" id="modalUser">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalUserTitle"><i class="fa-solid fa-user-plus"></i> Nuevo Usuario</h3>
+        <button class="btn-close-modal" id="btnCloseUserModal">&times;</button>
+      </div>
+      <form id="userForm">
+        <input type="hidden" id="userFormId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Nombre Completo</label>
+            <input type="text" id="userFormFullName" class="form-control" placeholder="Ej: Roberto Sánchez" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Nombre de Usuario (Texto libre)</label>
+            <input type="text" id="userFormUsername" class="form-control" placeholder="Ej: roberto_planta" required autocomplete="off">
+            <div class="form-hint">Identificador con el que iniciará sesión en el sistema.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Rol y Nivel de Acceso</label>
+            <select id="userFormRole" class="form-control" required style="font-weight:700;">
+              <option value="Usuario">Usuario (Solo Estación Escáner)</option>
+              <option value="Ejecutivo">Ejecutivo (Ve todo - Sin gestión de usuarios)</option>
+              <option value="RRHH">RRHH (Ve todo - Sin gestión de usuarios)</option>
+              <option value="Administrador">Administrador (Control total + Gestión de usuarios)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" id="userFormPasswordLabel">Contraseña</label>
+            <input type="password" id="userFormPassword" class="form-control" placeholder="Mínimo 6 caracteres..." autocomplete="new-password">
+            <div class="form-hint" id="userFormPasswordHint">Ingrese la contraseña para este usuario.</div>
+          </div>
+
+          <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+            <input type="checkbox" id="userFormActive" checked style="width:18px; height:18px; accent-color:#10b981;">
+            <label for="userFormActive" style="font-weight:700; font-size:0.9rem; cursor:pointer;">Usuario Habilitado / Activo</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="btnCancelUserModal">Cancelar</button>
+          <button type="submit" class="btn-primary"><i class="fa-solid fa-save"></i> Guardar Usuario</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       BOTÓN FLOTANTE DE INSTALACIÓN PWA (CELULAR Y COMPUTADORA)
+       ======================================================================== -->
+  <div class="pwa-floating-install-container" id="pwaFloatingContainer">
+    <button type="button" class="btn-pwa-floating" id="btnPwaInstall">
+      <img src="favicon.png" alt="Logo" class="pwa-floating-logo">
+      <div class="pwa-floating-text">
+        <span class="pwa-title">Instalar App</span>
+        <span class="pwa-sub">Acceso rápido</span>
+      </div>
+      <i class="fa-solid fa-download pwa-icon-download"></i>
+    </button>
+    <button type="button" class="btn-pwa-dismiss" id="btnPwaDismiss" title="Ocultar">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Modal Instrucciones de Instalación para iOS / Safari -->
+  <div class="modal-overlay" id="modalIosInstall" style="display:none;">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header" style="justify-content: center; position: relative;">
+        <img src="icon-192.png" style="width: 54px; height: 54px; border-radius: 12px; margin-bottom: 0.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.4);" alt="Logo">
+        <button type="button" class="btn-close-modal" id="btnCloseIosModal" style="position: absolute; right: 1rem; top: 1rem;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding: 1.25rem 1.5rem;">
+        <h3 style="font-size: 1.15rem; font-weight: 800; color: #ffffff; margin-bottom: 0.75rem;">Instalar en iPhone / iPad</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
+          Para instalar la aplicación en la pantalla de inicio de tu celular:
+        </p>
+        <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; text-align: left; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: #f8fafc;">
+            <span style="background: #3b82f6; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem;">1</span>
+            <span>Toca el botón <strong>Compartir</strong> <i class="fa-solid fa-arrow-up-from-bracket" style="color: #38bdf8; margin-left: 0.25rem;"></i> en Safari.</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: #f8fafc;">
+            <span style="background: #3b82f6; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem;">2</span>
+            <span>Desliza y selecciona <strong>"Agregar al inicio"</strong> <i class="fa-regular fa-square-plus" style="color: #34d399; margin-left: 0.25rem;"></i>.</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="justify-content: center;">
+        <button type="button" class="btn-primary" id="btnUnderstandIos" style="width: 100%;">¡Entendido!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL DE ESCANEO POR CÁMARA (CELULARES Y DISPOSITIVOS MÓVILES)
+       ======================================================================== -->
+  <div class="camera-scanner-overlay" id="mobileCameraModal" style="display:none;" role="dialog" aria-modal="true">
+    <div class="camera-scanner-dialog">
+      <div class="camera-scanner-header">
+        <div class="camera-header-left">
+          <i class="fa-solid fa-camera" style="color:#38bdf8; font-size:1.15rem;"></i>
+          <span>Lector de Cámara</span>
+        </div>
+        <div class="camera-header-actions">
+          <button type="button" class="btn-camera-ctrl" id="btnToggleTorch" title="Linterna" style="display:none;">
+            <i class="fa-solid fa-bolt"></i>
+          </button>
+          <button type="button" class="btn-camera-ctrl" id="btnSwitchCamera" title="Cambiar Cámara" style="display:none;">
+            <i class="fa-solid fa-camera-rotate"></i>
+          </button>
+          <button type="button" class="btn-camera-close" id="btnCloseCameraModal" title="Cerrar Cámara">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="camera-scanner-body">
+        <div id="cameraVideoViewport" class="camera-video-viewport"></div>
+        <div class="camera-targeting-guide">
+          <div class="laser-scanner-line"></div>
+          <div class="corner-bracket top-left"></div>
+          <div class="corner-bracket top-right"></div>
+          <div class="corner-bracket bottom-left"></div>
+          <div class="corner-bracket bottom-right"></div>
+        </div>
+
+        <div class="camera-scan-feedback" id="cameraScanFeedback" style="display:none;">
+          <span class="feedback-icon"><i class="fa-solid fa-circle-check"></i></span>
+          <span class="feedback-text" id="cameraFeedbackText">Código leído</span>
+        </div>
+      </div>
+
+      <div class="camera-scanner-footer">
+        <div class="camera-tip">
+          <i class="fa-solid fa-barcode"></i>
+          <span>Apunte al código de barra de la caja</span>
+        </div>
+        <div class="camera-footer-controls">
+          <label class="camera-continuous-toggle" title="Permite escanear varias cajas seguidas sin cerrar la cámara">
+            <input type="checkbox" id="chkContinuousScan" checked>
+            <span>Continuo</span>
+          </label>
+          <button type="button" class="btn-secondary" id="btnCancelCamera" style="padding:0.4rem 0.8rem; font-size:0.8rem;">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       CARTEL MODAL DE ALERTA: CAJA DUPLICADA (PICKING DUPLICADO DETECTADO)
+       Muestra en pantalla una alerta con un cartel cuando se detecta correlativo duplicado
+       ======================================================================== -->
+  <div class="duplicate-alert-backdrop" id="duplicateAlertModal" style="display:none;" role="dialog" aria-modal="true">
+    <div class="duplicate-alert-dialog">
+      <div class="duplicate-alert-header">
+        <div class="duplicate-alert-icon-wrap">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h2>¡ALERTA DE CAJA DUPLICADA!</h2>
+        <p class="duplicate-alert-subtitle">Este código de barra de 10 dígitos ya fue registrado previamente en el sistema hoy.</p>
+      </div>
+
+      <div class="duplicate-alert-body">
+        <div class="duplicate-correlativo-highlight">
+          <span class="dup-label">CÓDIGO DE BARRA DUPLICADO (10 DÍGITOS)</span>
+          <span class="dup-number" id="dupAlertBarcode" style="letter-spacing:0.08em;">0000000000</span>
+        </div>
+
+        <div class="duplicate-details-grid">
+          <div class="dup-detail-item">
+            <span class="dup-detail-label">N° Correlativo Digital:</span>
+            <span class="dup-detail-val" id="dupAlertCorrelativo">#0000</span>
+          </div>
+          <div class="dup-detail-item">
+            <span class="dup-detail-label">Empacador Registrado Previamente:</span>
+            <span class="dup-detail-val highlight" id="dupAlertEmpName">-</span>
+          </div>
+          <div class="dup-detail-item">
+            <span class="dup-detail-label">Hora del Registro Original:</span>
+            <span class="dup-detail-val" id="dupAlertTimestamp">--:--:--</span>
+          </div>
+          <div class="dup-detail-item">
+            <span class="dup-detail-label">Calidad y Envase Original:</span>
+            <span class="dup-detail-val" id="dupAlertProduct">-</span>
+          </div>
+        </div>
+
+        <div class="duplicate-warning-box">
+          <i class="fa-solid fa-ban"></i>
+          <div>
+            <strong>REGISTRO BLOQUEADO:</strong> Esta caja NO fue guardada ni sumada a la liquidación para evitar duplicidades al hacer picking en la misma caja dos veces.
+          </div>
+        </div>
+      </div>
+
+      <div class="duplicate-alert-footer">
+        <button type="button" class="btn-ack-duplicate" id="btnDismissDuplicateAlert" autofocus>
+          <i class="fa-solid fa-check"></i> Entendido (ENTER o Escanear Siguiente)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor de Alertas Toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Script de la Aplicación -->
+  <script src="app.js?v=3.0.0"></script>
+</body>
+</html>
