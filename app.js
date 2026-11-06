@@ -2873,6 +2873,34 @@ function switchTab(targetTabId) {
 
   AppState.activeTab = targetTabId;
 
+  // Actualizar Título y Subtítulo en Topbar Superior (AGENTS.md)
+  const TAB_META = {
+    'tab-scanner': { title: 'Estación Escáner', subtitle: 'Sistema de Registro de Cajas y Liquidación de Destajo' },
+    'tab-waste': { title: 'Control de Descarte', subtitle: 'Registro y auditoría de cajas de descarte manual' },
+    'tab-dashboard': { title: 'Tablero / Dashboard', subtitle: 'Métricas generales, avances y gráficos de empaque' },
+    'tab-employees': { title: 'Padrón de Personal', subtitle: 'Gestión de empacadores y tarifas personalizadas' },
+    'tab-production': { title: 'Producción en Vivo', subtitle: 'Monitoreo en tiempo real por calidad, envase y turno' },
+    'tab-payroll': { title: 'Liquidación RRHH', subtitle: 'Resumen de jornales y pagos de Recursos Humanos' },
+    'tab-users': { title: 'Usuarios del Sistema', subtitle: 'Control de accesos y roles de seguridad' },
+    'tab-settings': { title: 'Configuración Operativa', subtitle: 'Ajustes de jornada, envases y parámetros del sistema' }
+  };
+
+  const meta = TAB_META[targetTabId];
+  if (meta) {
+    const titleEl = document.getElementById('topbarPageTitle');
+    const subEl = document.getElementById('topbarPageSubtitle');
+    if (titleEl) titleEl.textContent = meta.title;
+    if (subEl) subEl.textContent = meta.subtitle;
+  }
+
+  // Cerrar drawer móvil si está abierto
+  const sidebar = document.getElementById('appSidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  if (sidebar && sidebar.classList.contains('mobile-open')) {
+    sidebar.classList.remove('mobile-open');
+    if (backdrop) backdrop.classList.remove('active');
+  }
+
   if (targetTabId === 'tab-scanner') {
     const barcodeInput = document.getElementById('barcodeInput');
     if (barcodeInput) barcodeInput.focus();
@@ -2886,6 +2914,57 @@ function switchTab(targetTabId) {
     renderProductionCharts();
   } else if (targetTabId === 'tab-users') {
     renderUsersTable();
+  }
+}
+
+// Inicializador de la Barra Lateral Colapsable y Responsive (AGENTS.md)
+function initSidebarController() {
+  const sidebar = document.getElementById('appSidebar');
+  const btnCollapse = document.getElementById('btnCollapseSidebar');
+  const btnExpand = document.getElementById('btnExpandSidebar');
+  const btnMobile = document.getElementById('btnMobileToggle');
+  const backdrop = document.getElementById('sidebarBackdrop');
+
+  // Recuperar preferencia de barra compacta guardada en localStorage
+  const isCompact = localStorage.getItem('magaretto_sidebar_compact') === 'true';
+  if (isCompact && sidebar && window.innerWidth > 768) {
+    sidebar.classList.add('compact');
+  }
+
+  // Contraer menú
+  if (btnCollapse) {
+    btnCollapse.addEventListener('click', () => {
+      if (sidebar) {
+        sidebar.classList.add('compact');
+        localStorage.setItem('magaretto_sidebar_compact', 'true');
+      }
+    });
+  }
+
+  // Expandir menú
+  if (btnExpand) {
+    btnExpand.addEventListener('click', () => {
+      if (sidebar) {
+        sidebar.classList.remove('compact');
+        localStorage.setItem('magaretto_sidebar_compact', 'false');
+      }
+    });
+  }
+
+  // Menú móvil (abrir drawer)
+  if (btnMobile) {
+    btnMobile.addEventListener('click', () => {
+      if (sidebar) sidebar.classList.add('mobile-open');
+      if (backdrop) backdrop.classList.add('active');
+    });
+  }
+
+  // Cerrar drawer móvil al tocar el fondo oscuro
+  if (backdrop) {
+    backdrop.addEventListener('click', () => {
+      if (sidebar) sidebar.classList.remove('mobile-open');
+      backdrop.classList.remove('active');
+    });
   }
 }
 
@@ -3261,6 +3340,9 @@ async function confirmDeleteUser(userIdOrUsername) {
 document.addEventListener('DOMContentLoaded', () => {
   // 0. Inicializar Autenticación y Control de Roles (RBAC)
   AuthManager.init();
+
+  // 0B. Inicializar Controlador de Barra Lateral (AGENTS.md)
+  initSidebarController();
 
   // 1. Inicializar Pestañas con switchTab
   document.querySelectorAll('.nav-tab').forEach(tabBtn => {

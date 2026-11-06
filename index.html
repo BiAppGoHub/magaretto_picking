@@ -843,87 +843,137 @@
     </div>
   </div>
 
-  <!-- HEADER PRINCIPAL -->
-  <header class="app-header">
-    <div class="header-container">
-      
-      <!-- Logo y Título -->
-      <div class="brand-section">
-        <div class="brand-logo" style="overflow: hidden; padding: 0;">
-          <img src="favicon.png" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-md);" alt="Logo">
+  <!-- CONTENEDOR MAESTRO DE LA APLICACIÓN -->
+  <div class="app-layout" id="appLayout">
+    
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside class="app-sidebar" id="appSidebar" aria-label="Navegación principal">
+      <!-- Encabezado Sidebar -->
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <div class="sidebar-logo">
+            <img src="favicon.png" alt="Logo Magaretto">
+          </div>
+          <div class="sidebar-brand-text">
+            <h2>MAGARETTO</h2>
+            <span class="sidebar-brand-subtitle">PICKING Y CAJAS</span>
+          </div>
         </div>
-        <div class="brand-info">
-          <h1>MAGARETTO <span class="brand-badge">PICKING Y CAJAS</span></h1>
-          <div class="brand-sub">Sistema de Registro de Cajas y Liquidación de Destajo</div>
-        </div>
+        <button type="button" class="sidebar-toggle-btn" id="btnCollapseSidebar" title="Contraer menú" aria-label="Contraer menú">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
       </div>
 
-      <!-- Pestañas de Navegación -->
-      <nav class="nav-tabs" id="mainNavTabs">
-        <button class="nav-tab active" data-tab="tab-scanner" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
-          <i class="fa-solid fa-barcode"></i> Estación Escáner
+      <!-- Navegación de Pestañas -->
+      <nav class="sidebar-nav" id="mainNavTabs" role="tablist">
+        <button class="nav-tab active" data-tab="tab-scanner" data-roles="Administrador,Ejecutivo,RRHH,Usuario" role="tab" title="Estación Escáner">
+          <i class="fa-solid fa-barcode"></i>
+          <span class="nav-tab-label">Estación Escáner</span>
         </button>
-        <button class="nav-tab" data-tab="tab-waste" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
-          <i class="fa-solid fa-trash-can"></i> Descarte
+        <button class="nav-tab" data-tab="tab-waste" data-roles="Administrador,Ejecutivo,RRHH,Usuario" role="tab" title="Descarte">
+          <i class="fa-solid fa-trash-can"></i>
+          <span class="nav-tab-label">Descarte</span>
         </button>
-        <button class="nav-tab" data-tab="tab-dashboard" data-roles="Administrador,Ejecutivo,RRHH,Usuario">
-          <i class="fa-solid fa-chart-pie"></i> Tablero / Dashboard
+        <button class="nav-tab" data-tab="tab-dashboard" data-roles="Administrador,Ejecutivo,RRHH,Usuario" role="tab" title="Tablero / Dashboard">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span class="nav-tab-label">Tablero / Dashboard</span>
         </button>
-        <button class="nav-tab" data-tab="tab-employees" data-roles="Administrador,Ejecutivo,RRHH">
-          <i class="fa-solid fa-users"></i> Personal
+        <button class="nav-tab" data-tab="tab-employees" data-roles="Administrador,Ejecutivo,RRHH" role="tab" title="Personal">
+          <i class="fa-solid fa-users"></i>
+          <span class="nav-tab-label">Personal</span>
         </button>
-        <button class="nav-tab" data-tab="tab-production" data-roles="Administrador,Ejecutivo,RRHH">
-          <i class="fa-solid fa-chart-line"></i> Producción en Vivo
+        <button class="nav-tab" data-tab="tab-production" data-roles="Administrador,Ejecutivo,RRHH" role="tab" title="Producción en Vivo">
+          <i class="fa-solid fa-chart-line"></i>
+          <span class="nav-tab-label">Producción en Vivo</span>
         </button>
-        <button class="nav-tab" data-tab="tab-payroll" data-roles="Administrador,Ejecutivo,RRHH">
-          <i class="fa-solid fa-money-bill-wave"></i> Liquidación RRHH
+        <button class="nav-tab" data-tab="tab-payroll" data-roles="Administrador,Ejecutivo,RRHH" role="tab" title="Liquidación RRHH">
+          <i class="fa-solid fa-money-bill-wave"></i>
+          <span class="nav-tab-label">Liquidación RRHH</span>
         </button>
-        <button class="nav-tab" data-tab="tab-users" data-roles="Administrador" style="display:none;">
-          <i class="fa-solid fa-user-shield"></i> Usuarios
+        <button class="nav-tab" data-tab="tab-users" data-roles="Administrador" role="tab" style="display:none;" title="Usuarios">
+          <i class="fa-solid fa-user-shield"></i>
+          <span class="nav-tab-label">Usuarios</span>
         </button>
-        <button class="nav-tab" data-tab="tab-settings" data-roles="Administrador,Ejecutivo,RRHH">
-          <i class="fa-solid fa-gear"></i> Configuración
+        <button class="nav-tab" data-tab="tab-settings" data-roles="Administrador,Ejecutivo,RRHH" role="tab" title="Configuración">
+          <i class="fa-solid fa-gear"></i>
+          <span class="nav-tab-label">Configuración</span>
         </button>
       </nav>
 
-      <!-- Estado de Conexión, Usuario & Sonido -->
-      <div class="header-actions">
-        
-        <!-- Indicador Base de Datos -->
-        <div class="connection-status" id="connectionBadge" title="Estado de sincronización con la base de datos">
-          <div class="status-dot" id="connectionDot"></div>
-          <span id="connectionText">Base de Datos En Línea</span>
-        </div>
+      <!-- Pie de la Barra Lateral -->
+      <div class="sidebar-footer">
+        <!-- Botón para expandir cuando la barra está en estado compacto -->
+        <button type="button" class="sidebar-expand-btn" id="btnExpandSidebar" title="Expandir menú" aria-label="Expandir menú">
+          <i class="fa-solid fa-chevron-right"></i>
+          <span class="sidebar-expand-label">Expandir menú</span>
+        </button>
 
-        <!-- Chip de Usuario Autenticado & Cerrar Sesión -->
-        <div class="user-session-chip" id="userSessionChip" style="display:none;">
-          <div class="user-session-avatar">
+        <!-- Bloque de Usuario Autenticado -->
+        <div class="sidebar-user-block" id="userSessionChip" style="display:none;">
+          <div class="sidebar-user-avatar">
             <i class="fa-solid fa-user-check"></i>
           </div>
-          <div class="user-session-info">
+          <div class="sidebar-user-info">
             <span class="user-session-name" id="sessionUserName">Admin</span>
             <span class="user-session-role role-admin" id="sessionUserRole">Administrador</span>
           </div>
-          <button type="button" class="btn-logout" id="btnLogout" title="Cerrar Sesión">
-            <i class="fa-solid fa-right-from-bracket"></i>
-          </button>
         </div>
 
-        <!-- Controles de Sonido Beep -->
-        <div class="audio-controls" title="Prueba sonora para la pistola lectora">
-          <button class="btn-test-sound" id="btnTestBeep">
-            <i class="fa-solid fa-volume-high"></i> Probar Beep
-          </button>
-          <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.05" value="0.9" title="Volumen de audio">
+        <!-- Crédito Obligatorio del Desarrollador -->
+        <div class="sidebar-credit">
+          <span>Desarrollado por <a href="https://biappgo.com" target="_blank" rel="noopener noreferrer"><strong>BiAppGo</strong></a></span>
         </div>
 
+        <!-- Versión Opcional -->
+        <div class="sidebar-version">
+          <span>v3.0.0</span>
+        </div>
+
+        <!-- Botón de Cerrar Sesión -->
+        <button type="button" class="btn-logout sidebar-logout-btn" id="btnLogout" title="Cerrar Sesión" aria-label="Cerrar Sesión">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span class="sidebar-logout-label">Cerrar Sesión</span>
+        </button>
       </div>
+    </aside>
 
-    </div>
-  </header>
+    <!-- Backdrop para Drawer Móvil -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-  <!-- CONTENEDOR PRINCIPAL -->
-  <main class="main-container">
+    <!-- ÁREA PRINCIPAL CON TOPBAR Y CONTENIDO -->
+    <div class="app-viewport">
+      
+      <!-- Topbar Superior -->
+      <header class="app-topbar">
+        <div class="topbar-left">
+          <button type="button" class="btn-mobile-toggle" id="btnMobileToggle" title="Abrir menú" aria-label="Abrir menú">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <div class="topbar-title-block">
+            <h1 class="topbar-page-title" id="topbarPageTitle">Estación Escáner</h1>
+            <p class="topbar-page-subtitle" id="topbarPageSubtitle">Sistema de Registro de Cajas y Liquidación de Destajo</p>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Indicador Base de Datos -->
+          <div class="connection-status" id="connectionBadge" title="Estado de sincronización con la base de datos">
+            <div class="status-dot" id="connectionDot"></div>
+            <span id="connectionText">Base de Datos En Línea</span>
+          </div>
+
+          <!-- Controles de Sonido Beep -->
+          <div class="audio-controls" title="Prueba sonora para la pistola lectora">
+            <button class="btn-test-sound" id="btnTestBeep" title="Probar sonido">
+              <i class="fa-solid fa-volume-high"></i> <span class="hide-mobile">Probar Beep</span>
+            </button>
+            <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.05" value="0.9" title="Volumen de audio">
+          </div>
+        </div>
+      </header>
+
+      <!-- CONTENEDOR PRINCIPAL -->
+      <main class="main-container">
 
     <!-- ========================================================================
          TAB 1: ESTACIÓN DE ESCÁNER (VISTA OPERADOR Y VISTA EJECUTIVA)
@@ -2109,6 +2159,8 @@
     </div>
 
   </main>
+    </div><!-- /.app-viewport -->
+  </div><!-- /.app-layout -->
 
   <!-- ========================================================================
        MODAL: NUEVO / EDITAR EMPLEADO
