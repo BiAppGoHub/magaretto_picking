@@ -3255,7 +3255,8 @@ const AuthManager = {
       if (kpiStrip) kpiStrip.style.display = 'none';
       if (audioControls) audioControls.style.display = 'none';
       if (tabScannerBtn) {
-        tabScannerBtn.innerHTML = '<i class="fa-solid fa-chart-pie"></i> Monitoreo Ejecutivo';
+        tabScannerBtn.title = 'Monitoreo Ejecutivo';
+        tabScannerBtn.innerHTML = '<i class="fa-solid fa-chart-pie"></i> <span class="nav-tab-label">Monitoreo Ejecutivo</span>';
       }
     } else {
       if (operatorView) operatorView.style.display = '';
@@ -3263,7 +3264,8 @@ const AuthManager = {
       if (kpiStrip) kpiStrip.style.display = '';
       if (audioControls) audioControls.style.display = '';
       if (tabScannerBtn) {
-        tabScannerBtn.innerHTML = '<i class="fa-solid fa-barcode"></i> Estación Escáner';
+        tabScannerBtn.title = 'Estación Escáner';
+        tabScannerBtn.innerHTML = '<i class="fa-solid fa-barcode"></i> <span class="nav-tab-label">Estación Escáner</span>';
       }
     }
 

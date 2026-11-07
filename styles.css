@@ -376,10 +376,11 @@ body {
 .app-sidebar.compact {
   width: var(--sidebar-width-compact);
   min-width: var(--sidebar-width-compact);
+  overflow-x: hidden;
 }
 
 .app-sidebar.compact .sidebar-brand-text {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-header {
@@ -388,24 +389,46 @@ body {
 }
 
 .app-sidebar.compact .sidebar-toggle-btn {
-  display: none;
+  display: none !important;
+}
+
+.app-sidebar.compact .sidebar-nav {
+  padding: 0.85rem 0.5rem;
+  overflow-x: hidden;
 }
 
 .app-sidebar.compact .nav-tab {
   justify-content: center;
+  align-items: center;
   padding: 0.65rem 0;
+  width: 100%;
+  gap: 0;
+  overflow: hidden;
+  font-size: 0 !important;
+}
+
+.app-sidebar.compact .nav-tab i {
+  font-size: 1.15rem !important;
+  margin: 0 !important;
+  width: auto;
 }
 
 .app-sidebar.compact .nav-tab-label {
-  display: none;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .app-sidebar.compact .sidebar-expand-btn {
-  display: flex;
+  display: flex !important;
 }
 
 .app-sidebar.compact .sidebar-expand-label {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-user-block {
@@ -416,19 +439,19 @@ body {
 }
 
 .app-sidebar.compact .sidebar-user-info {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-credit {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-version {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-logout-label {
-  display: none;
+  display: none !important;
 }
 
 .app-sidebar.compact .sidebar-logout-btn {
@@ -445,12 +468,12 @@ body {
   transform: translateY(-50%);
   background: #0B1C30;
   color: #FFFFFF;
-  font-size: 0.78rem;
+  font-size: 0.78rem !important;
   font-weight: 600;
   padding: 0.4rem 0.75rem;
   border-radius: 6px;
   white-space: nowrap;
-  z-index: 100;
+  z-index: 1000;
   pointer-events: none;
   box-shadow: var(--shadow-md);
   animation: fadeIn 0.15s ease-out;
@@ -464,7 +487,7 @@ body {
   transform: translateY(-50%);
   border: 5px solid transparent;
   border-right-color: #0B1C30;
-  z-index: 100;
+  z-index: 1000;
   pointer-events: none;
 }
 
