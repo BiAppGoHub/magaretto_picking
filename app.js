@@ -1970,13 +1970,13 @@ function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 
     
     // Frase requerida de alta visibilidad: Juan Carlos Mendoza 10 cajas - 22/08/26
     if (heroAccumText) {
-      heroAccumText.innerHTML = `<span style="color:#ffffff; font-weight:900; font-size:1.05rem;">${escapeHtml(employee.nombre_completo)}</span> <span style="background:#059669; color:#ffffff; padding:0.1rem 0.45rem; border-radius:5px; font-weight:900; font-family:var(--font-mono); font-size:1rem;">${empBoxes} ${boxWord}</span> <span style="color:#cbd5e1; font-weight:700; font-size:0.85rem;">- ${formattedDate}</span>`;
+      heroAccumText.innerHTML = `<span style="color:var(--text-primary); font-weight:900; font-size:1.05rem;">${escapeHtml(employee.nombre_completo)}</span> <span style="background:var(--accent-primary); color:#ffffff; padding:0.15rem 0.5rem; border-radius:5px; font-weight:900; font-family:var(--font-mono); font-size:1rem;">${empBoxes} ${boxWord}</span> <span style="color:var(--text-secondary); font-weight:700; font-size:0.85rem;">- ${formattedDate}</span>`;
     }
 
     if (heroEmpBoxCount) heroEmpBoxCount.innerText = `${empBoxes}`;
     if (heroEmpDateShift) heroEmpDateShift.innerText = `${formattedDate}`;
     if (heroBarcodeRead) {
-      heroBarcodeRead.innerHTML = `<span style="font-family:var(--font-mono); font-weight:800; color:#93c5fd;">${escapeHtml(barcode)}</span>`;
+      heroBarcodeRead.innerHTML = `<span style="font-family:var(--font-mono); font-weight:800; color:var(--accent-primary);">${escapeHtml(barcode)}</span>`;
     }
   } else if (status === 'duplicate') {
     const p = parsed || parseVeteBarcode(barcode);
@@ -2489,8 +2489,8 @@ async function renderProductionCharts() {
   if (records.length === 0 && AppState.totalHistoricalScans > 0 && period === 'hoy') {
     container.innerHTML = `
       <div style="text-align:center; padding:2rem 1rem; color:var(--text-muted); background:var(--bg-primary); border-radius:var(--radius-md); border:1px solid var(--border-color);">
-        <i class="fa-solid fa-calendar-xmark" style="font-size:2rem; margin-bottom:0.75rem; color:#38bdf8; display:block;"></i>
-        <div style="font-weight:700; color:white; margin-bottom:0.35rem;">Sin registros en la jornada de hoy</div>
+        <i class="fa-solid fa-calendar-xmark" style="font-size:2rem; margin-bottom:0.75rem; color:var(--accent-primary); display:block;"></i>
+        <div style="font-weight:700; color:var(--text-primary); margin-bottom:0.35rem;">Sin registros en la jornada de hoy</div>
         <p style="font-size:0.85rem; margin-bottom:1rem;">Hay <strong>${AppState.totalHistoricalScans} cajas</strong> guardadas en la base de datos.</p>
         <button type="button" class="btn-primary" style="margin:0 auto; padding:0.4rem 1rem; font-size:0.85rem;" onclick="const p=document.getElementById('prodFilterPeriod'); if(p){p.value='este_mes';} renderProductionCharts();">
           <i class="fa-solid fa-calendar-days"></i> Ver Ranking de Este Mes (${AppState.totalHistoricalScans} cajas)
@@ -2549,14 +2549,14 @@ function renderEmployeesTable() {
 
     return `
       <tr>
-        <td style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;">${escapeHtml(emp.codigo_empleado)}</td>
-        <td style="font-weight:700; color:white;">${escapeHtml(emp.nombre_completo)}</td>
+        <td style="font-family:var(--font-mono); font-weight:700; color:var(--accent-primary);">${escapeHtml(emp.codigo_empleado)}</td>
+        <td style="font-weight:700; color:var(--text-primary);">${escapeHtml(emp.nombre_completo)}</td>
         <td>${escapeHtml(emp.dni_rut || '-')}</td>
         <td>${escapeHtml(emp.telefono || '-')}</td>
         <td>${rate}</td>
         <td>${statusBadge}</td>
-        <td style="font-family:var(--font-mono); font-weight:700; color:#34d399;">${todayBoxes} cajas</td>
-        <td style="font-family:var(--font-mono); font-weight:800; color:#38bdf8;">${histTotal} cajas</td>
+        <td style="font-family:var(--font-mono); font-weight:700; color:var(--status-success);">${todayBoxes} cajas</td>
+        <td style="font-family:var(--font-mono); font-weight:800; color:var(--accent-primary);">${histTotal} cajas</td>
         <td style="text-align:right;">
           <button class="btn-secondary" style="padding:0.3rem 0.6rem; font-size:0.8rem; display:inline-flex;" onclick="openEditEmployeeModal('${emp.id || emp.codigo_empleado}')">
             <i class="fa-solid fa-pen"></i> Editar
@@ -2730,12 +2730,12 @@ async function calculatePayroll(periodType = 'este_mes') {
 
       rowsHtml.push(`
         <tr>
-          <td style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;">${escapeHtml(item.employee.codigo_empleado)}</td>
-          <td style="font-weight:700; color:white;">${escapeHtml(item.employee.nombre_completo)}</td>
+          <td style="font-family:var(--font-mono); font-weight:700; color:var(--accent-primary);">${escapeHtml(item.employee.codigo_empleado)}</td>
+          <td style="font-weight:700; color:var(--text-primary);">${escapeHtml(item.employee.nombre_completo)}</td>
           <td>${escapeHtml(item.employee.dni_rut || '-')}</td>
-          <td style="text-align:center; font-family:var(--font-mono); font-weight:800; font-size:1.1rem; color:#34d399;">${item.boxes}</td>
+          <td style="text-align:center; font-family:var(--font-mono); font-weight:800; font-size:1.1rem; color:var(--status-success);">${item.boxes}</td>
           <td style="text-align:right; font-family:var(--font-mono);">$${avgRate}</td>
-          <td style="text-align:right; font-family:var(--font-mono); font-weight:800; font-size:1.15rem; color:#fef08a;">$${item.totalAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align:right; font-family:var(--font-mono); font-weight:800; font-size:1.15rem; color:var(--accent-primary);">$${item.totalAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
           <td style="text-align:center; font-family:var(--font-mono); font-size:0.85rem; color:var(--text-secondary);">${firstStr}</td>
           <td style="text-align:center; font-family:var(--font-mono); font-size:0.85rem; color:var(--text-secondary);">${lastStr}</td>
           <td style="text-align:right;">
@@ -4250,11 +4250,11 @@ const DescarteManager = {
       return `
         <tr>
           <td style="font-family: var(--font-mono); font-size: 0.85rem;">${timeStr}</td>
-          <td><strong style="color: #ffffff;">${escapeHtml(item.empleado_nombre_snapshot || '-')}</strong></td>
-          <td style="font-family: var(--font-mono); color: #38bdf8; font-weight: 700;">${escapeHtml(item.codigo_empleado_extraido || '-')}</td>
-          <td style="text-align: center; font-weight: 800; color: #f97316;">1 cj</td>
+          <td><strong style="color: var(--text-primary);">${escapeHtml(item.empleado_nombre_snapshot || '-')}</strong></td>
+          <td style="font-family: var(--font-mono); color: var(--accent-primary); font-weight: 700;">${escapeHtml(item.codigo_empleado_extraido || '-')}</td>
+          <td style="text-align: center; font-weight: 800; color: var(--text-primary);">1 cj</td>
           <td style="text-align: center;">
-            <span style="background: rgba(249, 115, 22, 0.18); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">
+            <span style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">
               <i class="fa-solid fa-trash-can"></i> DESCARTE
             </span>
           </td>
@@ -5300,35 +5300,35 @@ const DashboardManager = {
         <tr>
           <td style="text-align:center;">${rankHtml}</td>
           <td>
-            <strong style="color:#ffffff; font-size:0.95rem;">${escapeHtml(emp.name)}</strong>
-            <div style="font-size:0.75rem; color:#38bdf8; font-family:var(--font-mono); font-weight:700;">
+            <strong style="color:var(--text-primary); font-size:0.95rem;">${escapeHtml(emp.name)}</strong>
+            <div style="font-size:0.75rem; color:var(--accent-primary); font-family:var(--font-mono); font-weight:700;">
               CÓD: ${escapeHtml(emp.code)}
             </div>
           </td>
           <td style="font-size:0.85rem; color:var(--text-secondary); font-family:var(--font-mono);">${escapeHtml(emp.dni)}</td>
           <td style="text-align:center;">
-            <strong style="font-size:1.15rem; font-family:var(--font-mono); color:#ffffff;">${emp.total.toLocaleString('es-AR')}</strong>
+            <strong style="font-size:1.15rem; font-family:var(--font-mono); color:var(--text-primary);">${emp.total.toLocaleString('es-AR')}</strong>
             <div class="dash-plant-share-bar">
               <div class="dash-plant-share-fill" style="width: ${plantShare}%;"></div>
             </div>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-weight:800; font-family:var(--font-mono);">${emp.primera}</span>
+            <span class="badge" style="background:#EFF6FF; color:#2563EB; font-weight:800; font-family:var(--font-mono);">${emp.primera}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:rgba(52,211,153,0.15); color:#34d399; font-weight:800; font-family:var(--font-mono);">${emp.segunda}</span>
+            <span class="badge" style="background:#ECFDF5; color:#059669; font-weight:800; font-family:var(--font-mono);">${emp.segunda}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:rgba(168,85,247,0.15); color:#c084fc; font-weight:800; font-family:var(--font-mono);">${emp.arana}</span>
+            <span class="badge" style="background:var(--accent-light); color:var(--accent-primary); font-weight:800; font-family:var(--font-mono);">${emp.arana}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:rgba(249,115,22,0.15); color:#fb923c; font-weight:800; font-family:var(--font-mono);">${emp.descarte}</span>
+            <span class="badge" style="background:#FEF2F2; color:#DC2626; font-weight:800; font-family:var(--font-mono);">${emp.descarte}</span>
           </td>
           <td>${envasePills}</td>
-          <td style="text-align:center; font-weight:800; font-family:var(--font-mono); color:#818cf8;">
+          <td style="text-align:center; font-weight:800; font-family:var(--font-mono); color:var(--accent-primary);">
             ${plantShare}%
           </td>
-          <td style="text-align:right; font-weight:900; font-family:var(--font-mono); color:#34d399; font-size:0.95rem;">
+          <td style="text-align:right; font-weight:900; font-family:var(--font-mono); color:var(--status-success); font-size:0.95rem;">
             $${subtotalEst}
           </td>
         </tr>
@@ -5379,12 +5379,12 @@ const DashboardManager = {
       return `
         <tr>
           <td>
-            <span style="font-family:var(--font-mono); font-weight:800; color:#38bdf8; letter-spacing:0.04em;">
+            <span style="font-family:var(--font-mono); font-weight:800; color:var(--accent-primary); letter-spacing:0.04em;">
               ${escapeHtml(barcode)}
             </span>
           </td>
           <td>
-            <span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1; font-weight:700; font-family:var(--font-mono);">
+            <span class="badge" style="background:var(--accent-light); color:var(--accent-primary); font-weight:700; font-family:var(--font-mono);">
               ${escapeHtml(correlativo)}
             </span>
           </td>
@@ -5392,14 +5392,14 @@ const DashboardManager = {
             ${timeStr} • ${dateStr}
           </td>
           <td>
-            <strong style="color:#ffffff;">${escapeHtml(s.empleado_nombre_snapshot || 'Empacador')}</strong>
+            <strong style="color:var(--text-primary);">${escapeHtml(s.empleado_nombre_snapshot || 'Empacador')}</strong>
             <span style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);"> (${escapeHtml(s.codigo_empleado_extraido || extractEmpCodeFromRecord(s))})</span>
           </td>
           <td>
             ${qualBadge}
           </td>
           <td>
-            <span style="font-size:0.85rem; font-weight:700; color:#e2e8f0;">${escapeHtml(s.nombre_tipo_caja || 'Caja')}</span>
+            <span style="font-size:0.85rem; font-weight:700; color:var(--text-primary);">${escapeHtml(s.nombre_tipo_caja || 'Caja')}</span>
           </td>
           <td style="font-size:0.8rem; color:var(--text-muted);">
             ${escapeHtml(s.linea_empaque || 'Línea 1')} • ${escapeHtml(s.origen_dispositivo || 'Pistola')}

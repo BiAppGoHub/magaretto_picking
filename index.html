@@ -295,8 +295,8 @@
           <div class="kpi-chip-data">
             <span class="kpi-chip-label">Envases Jornada</span>
             <span class="kpi-chip-val" id="kpiEnvaseActivo" style="display:flex; flex-direction:column; gap:2px; line-height:1.15; overflow:hidden;" title="1ª: Caja 10 kgs. · 2ª: Caja 10 kgs.">
-              <span style="color:#38bdf8; font-size:0.75rem; font-weight:800; white-space:nowrap;">1ª: <strong>Caja 10 kgs.</strong></span>
-              <span style="color:#34d399; font-size:0.75rem; font-weight:800; white-space:nowrap;">2ª: <strong>Caja 10 kgs.</strong></span>
+              <span style="color:#059669; font-size:0.75rem; font-weight:800; white-space:nowrap;">1ª: <strong>Caja 10 kgs.</strong></span>
+              <span style="color:#2563EB; font-size:0.75rem; font-weight:800; white-space:nowrap;">2ª: <strong>Caja 10 kgs.</strong></span>
             </span>
           </div>
         </div>
@@ -332,7 +332,7 @@
           </form>
 
           <div class="scanner-status-right">
-            <span id="syncQueueCounter" style="font-weight:700; font-size:0.8rem; color:#38bdf8; display:flex; align-items:center; gap:0.35rem;">
+            <span id="syncQueueCounter" style="font-weight:700; font-size:0.8rem; color:var(--accent-primary); display:flex; align-items:center; gap:0.35rem;">
               <i class="fa-solid fa-cloud-arrow-up"></i> Sync
             </span>
           </div>
@@ -368,7 +368,7 @@
 
               <!-- Resumen de Acumulado de la Caja Leída (Ej: Juan Pérez 10 cajas - 22/08/26) -->
               <div class="hero-accum-statement" id="heroAccumStatement">
-                <i class="fa-solid fa-boxes-stacked" style="color:var(--accent-garlic);"></i>
+                <i class="fa-solid fa-boxes-stacked" style="color:var(--accent-primary);"></i>
                 <span id="heroAccumText" style="font-weight:800; font-size:1.15rem; color:var(--text-primary);">-</span>
               </div>
 
@@ -517,25 +517,16 @@
          ======================================================================== -->
     <div class="tab-content" id="tab-waste" style="display:none;">
       
-      <!-- Header Superior de Descarte -->
-      <div class="dash-header-bar">
-        <div class="dash-header-title">
-          <div class="dash-title-icon" style="background: rgba(249, 115, 22, 0.15); color: #fb923c;">
-            <i class="fa-solid fa-trash-can"></i>
-          </div>
-          <div>
-            <h2 class="dash-title">Registro Manual de Cajas de Descarte</h2>
-            <div class="dash-subtitle">Carga manual de cajas descartadas por personal, fecha y hora. Calidad asignada fija: <strong>DESCARTE</strong></div>
-          </div>
-        </div>
-      </div>
-
       <!-- Tarjeta de Formulario de Ingreso de Descarte -->
       <div class="dash-filters-card" style="margin-bottom: 1.5rem;">
         <div class="dash-filters-header">
           <div class="dash-filters-title">
-            <i class="fa-solid fa-circle-plus" style="color: #fb923c;"></i> Nuevo Ingreso de Descarte
+            <div class="card-icon-badge"><i class="fa-solid fa-circle-plus"></i></div>
+            <span>Nuevo Ingreso de Descarte</span>
           </div>
+          <span class="badge" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; font-weight:700; font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:20px;">
+            Calidad fija: DESCARTE
+          </span>
         </div>
 
         <form id="formWasteEntry" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1.25rem; align-items: flex-end; padding: 1.25rem;">
@@ -543,7 +534,7 @@
           <!-- Personal con buscador -->
           <div class="dash-filter-item" style="grid-column: span 2; min-width: 280px;">
             <label class="dash-filter-label" for="wasteEmployeeSelect">
-              <i class="fa-solid fa-user"></i> Personal (Menú Desplegable con Buscador)
+              <i class="fa-solid fa-user"></i> Personal (Empacador)
             </label>
             <div style="display: flex; gap: 0.5rem; flex-direction: column;">
               <div style="position: relative; width: 100%;">
@@ -551,14 +542,14 @@
                   type="text" 
                   id="wasteEmployeeSearch" 
                   class="dash-input" 
-                  placeholder="🔍 Escribe para buscar por nombre, código (ej: 0101) o DNI..." 
+                  placeholder="Escribe para buscar por nombre, código (ej: 0101) o DNI..." 
                   autocomplete="off"
                   style="width: 100%; padding-right: 36px; height: 42px;"
                 >
                 <button 
                   type="button" 
                   id="btnResetWasteSearch" 
-                  style="display:none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; font-size: 1rem;"
+                  style="display:none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 1rem;"
                   title="Limpiar búsqueda"
                 >
                   <i class="fa-solid fa-circle-xmark"></i>
@@ -568,13 +559,13 @@
                 <option value="" disabled selected>-- Selecciona un empacador --</option>
               </select>
             </div>
-            <div id="wasteSearchMatchCount" style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.35rem; font-weight: 600;"></div>
+            <div id="wasteSearchMatchCount" style="font-size: 0.75rem; color: var(--accent-primary); margin-top: 0.35rem; font-weight: 600;"></div>
           </div>
 
           <!-- Fecha -->
           <div class="dash-filter-item">
             <label class="dash-filter-label" for="wasteDate">
-              <i class="fa-regular fa-calendar"></i> Fecha del Movimiento
+              <i class="fa-solid fa-calendar-day"></i> Fecha del Movimiento
             </label>
             <input type="date" id="wasteDate" class="dash-input" required style="height: 42px;">
           </div>
@@ -582,7 +573,7 @@
           <!-- Hora -->
           <div class="dash-filter-item">
             <label class="dash-filter-label" for="wasteTime">
-              <i class="fa-regular fa-clock"></i> Hora del Movimiento
+              <i class="fa-solid fa-clock"></i> Hora del Movimiento
             </label>
             <input type="time" id="wasteTime" class="dash-input" required style="height: 42px;">
           </div>
@@ -592,7 +583,7 @@
             <label class="dash-filter-label" for="wasteQuantity">
               <i class="fa-solid fa-boxes-stacked"></i> Cantidad de Cajas
             </label>
-            <input type="number" id="wasteQuantity" class="dash-input" min="1" max="9999" value="1" required style="font-weight: 800; font-size: 1.2rem; color: #fb923c; font-family: var(--font-mono);">
+            <input type="number" id="wasteQuantity" class="dash-input" min="1" max="9999" value="1" required style="font-weight: 800; font-size: 1.15rem; color: var(--text-primary); font-family: var(--font-mono); height: 42px;">
           </div>
 
           <!-- Calidad Asignada (Fija Descarte) -->
@@ -600,7 +591,7 @@
             <label class="dash-filter-label">
               <i class="fa-solid fa-award"></i> Calidad Automática
             </label>
-            <div class="dash-input" style="background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.4); color: #fb923c; font-weight: 800; display: flex; align-items: center; gap: 0.5rem; height: 40px;">
+            <div class="dash-input" style="background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; font-weight: 800; display: flex; align-items: center; gap: 0.5rem; height: 42px;">
               <i class="fa-solid fa-trash-can"></i> DESCARTE
             </div>
           </div>
@@ -608,8 +599,8 @@
           <!-- Botón de Registro -->
           <div class="dash-filter-item">
             <label class="dash-filter-label">&nbsp;</label>
-            <button type="submit" class="btn-primary" id="btnSubmitWaste" style="width: 100%; height: 42px; background: linear-gradient(135deg, #ea580c, #c2410c); border: none; font-weight: 800;">
-              <i class="fa-solid fa-plus-circle"></i> Registrar Cajas de Descarte
+            <button type="submit" class="btn-primary" id="btnSubmitWaste" style="width: 100%; height: 42px; font-weight: 700;">
+              <i class="fa-solid fa-plus"></i> Registrar Cajas de Descarte
             </button>
           </div>
 
@@ -620,7 +611,8 @@
       <div class="dash-card">
         <div class="dash-card-header">
           <div class="dash-card-title">
-            <i class="fa-solid fa-clock-rotate-left" style="color: #fb923c;"></i> Historial de Cajas de Descarte
+            <div class="card-icon-badge badge-danger"><i class="fa-solid fa-trash-can"></i></div>
+            <span>Historial de Cajas de Descarte</span>
           </div>
           <span class="dash-card-badge" id="wasteCountBadge">0 cajas de descarte</span>
         </div>
@@ -653,22 +645,17 @@
          ======================================================================== -->
     <div class="tab-content" id="tab-dashboard" style="display:none;">
 
-      <!-- Header Superior del Dashboard -->
-      <div class="dash-header-bar">
-        <div class="dash-header-title">
-          <div class="dash-title-icon">
-            <i class="fa-solid fa-chart-pie"></i>
-          </div>
-          <div>
-            <h2 class="dash-title">Tablero Analítico de Picking</h2>
-            <div class="dash-subtitle">Estadísticas en tiempo real, desglose por calidad/envase y ranking de empacadores</div>
-          </div>
+      <!-- Barra de Acciones Superiores del Dashboard -->
+      <div class="section-actions-bar" style="margin-bottom: 1.25rem;">
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-chart-pie"></i></div>
+          <span style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Tablero de Métricas y Rendimiento</span>
         </div>
         <div class="dash-header-actions">
           <button type="button" class="btn-secondary" id="btnRefreshDashboard" title="Recargar estadísticas">
             <i class="fa-solid fa-arrows-rotate"></i> Actualizar
           </button>
-          <button type="button" class="btn-primary" id="btnExportDashboardExcel" onclick="DashboardManager.exportExcel()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #059669; color:#ffffff; font-weight:700;" title="Exportar reporte detallado a formato Excel (.xlsx)">
+          <button type="button" class="btn-success" id="btnExportDashboardExcel" onclick="DashboardManager.exportExcel()" title="Exportar reporte detallado a formato Excel (.xlsx)">
             <i class="fa-solid fa-file-excel"></i> Exportar Excel
           </button>
           <button type="button" class="btn-secondary" id="btnExportDashboardCSV" onclick="DashboardManager.exportCSV()" title="Exportar datos a CSV">
@@ -684,7 +671,8 @@
       <div class="dash-filters-card">
         <div class="dash-filters-header">
           <div class="dash-filters-title">
-            <i class="fa-solid fa-sliders"></i> Filtros Multicriterio de Consulta
+            <div class="card-icon-badge"><i class="fa-solid fa-sliders"></i></div>
+            <span>Filtros Multicriterio de Consulta</span>
           </div>
           <div class="dash-filters-badge" id="dashFilteredCountBadge">
             0 cajas encontradas
@@ -696,7 +684,7 @@
           <!-- Período Rápido -->
           <div class="dash-filter-item">
             <label class="dash-filter-label" for="dashFilterPeriod">
-              <i class="fa-regular fa-calendar-check"></i> Período
+              <i class="fa-solid fa-calendar-check"></i> Período
             </label>
             <select id="dashFilterPeriod" class="dash-input">
               <option value="este_mes" selected>Este Mes (Recomendado)</option>
@@ -712,7 +700,7 @@
           <!-- Fecha Desde (se muestra si es Personalizado) -->
           <div class="dash-filter-item" id="dashFilterFromWrap" style="display:none;">
             <label class="dash-filter-label" for="dashFilterDateFrom">
-              <i class="fa-regular fa-calendar"></i> Desde
+              <i class="fa-solid fa-calendar-day"></i> Desde
             </label>
             <input type="date" id="dashFilterDateFrom" class="dash-input">
           </div>
@@ -720,7 +708,7 @@
           <!-- Fecha Hasta (se muestra si es Personalizado) -->
           <div class="dash-filter-item" id="dashFilterToWrap" style="display:none;">
             <label class="dash-filter-label" for="dashFilterDateTo">
-              <i class="fa-regular fa-calendar"></i> Hasta
+              <i class="fa-solid fa-calendar-day"></i> Hasta
             </label>
             <input type="date" id="dashFilterDateTo" class="dash-input">
           </div>
@@ -743,22 +731,22 @@
                 <div class="dash-multiselect-list" id="listDashQuality">
                   <label class="dash-multiselect-item">
                     <input type="checkbox" value="000" checked>
-                    <span class="dash-multiselect-item-badge">000</span>
+                    <span class="dash-multiselect-item-badge" style="background:#EFF6FF; color:#2563EB; border:1px solid #DBEAFE;">000</span>
                     <span>Primera</span>
                   </label>
                   <label class="dash-multiselect-item">
                     <input type="checkbox" value="002" checked>
-                    <span class="dash-multiselect-item-badge" style="background:rgba(52,211,153,0.18); color:#34d399;">002</span>
+                    <span class="dash-multiselect-item-badge" style="background:#ECFDF5; color:#059669; border:1px solid #D1FAE5;">002</span>
                     <span>Segunda</span>
                   </label>
                   <label class="dash-multiselect-item">
                     <input type="checkbox" value="003" checked>
-                    <span class="dash-multiselect-item-badge" style="background:rgba(167,139,250,0.18); color:#c084fc;">003</span>
+                    <span class="dash-multiselect-item-badge" style="background:var(--accent-light); color:var(--accent-primary); border:1px solid rgba(100,18,213,0.15);">003</span>
                     <span>Araña</span>
                   </label>
                   <label class="dash-multiselect-item">
                     <input type="checkbox" value="DESCARTE" checked>
-                    <span class="dash-multiselect-item-badge" style="background:rgba(249,115,22,0.18); color:#fb923c;">DESC</span>
+                    <span class="dash-multiselect-item-badge" style="background:#FEF2F2; color:#DC2626; border:1px solid #FEE2E2;">DESC</span>
                     <span>Descarte</span>
                   </label>
                 </div>
@@ -872,7 +860,7 @@
           </div>
           <div class="dash-kpi-value" id="dashKpiTotalBoxes">0</div>
           <div class="dash-kpi-sub">
-            <i class="fa-solid fa-circle-check" style="color:#60a5fa;"></i> Cajas en período filtrado
+            <i class="fa-solid fa-circle-check" style="color:var(--status-success);"></i> Cajas en período filtrado
           </div>
         </div>
 
@@ -981,7 +969,8 @@
         <div class="dash-card">
           <div class="dash-card-header">
             <div class="dash-card-title">
-              <i class="fa-solid fa-layer-group" style="color:#38bdf8;"></i> Cantidades por Calidad y Tipo de Envase
+              <div class="card-icon-badge"><i class="fa-solid fa-layer-group"></i></div>
+              <span>Cantidades por Calidad y Tipo de Envase</span>
             </div>
             <span class="dash-card-badge">DESGLOSE DETALLADO</span>
           </div>
@@ -996,7 +985,8 @@
         <div class="dash-card">
           <div class="dash-card-header">
             <div class="dash-card-title">
-              <i class="fa-solid fa-clock" style="color:#fbbf24;"></i> Cajas por Turno Operativo
+              <div class="card-icon-badge badge-warning"><i class="fa-solid fa-clock"></i></div>
+              <span>Cajas por Turno Operativo</span>
             </div>
             <span class="dash-card-badge">JORNADA DIARIA</span>
           </div>
@@ -1012,7 +1002,8 @@
       <div class="dash-card" style="margin-bottom: 1.5rem;">
         <div class="dash-card-header">
           <div class="dash-card-title">
-            <i class="fa-solid fa-chart-column" style="color:#34d399;"></i> Evolución de Picking por Hora del Día
+            <div class="card-icon-badge badge-success"><i class="fa-solid fa-chart-column"></i></div>
+            <span>Evolución de Picking por Hora del Día</span>
           </div>
           <span class="dash-card-badge">CURVA DE PRODUCTIVIDAD</span>
         </div>
@@ -1027,7 +1018,8 @@
       <div class="dash-card" style="margin-bottom: 1.5rem;">
         <div class="dash-card-header">
           <div class="dash-card-title">
-            <i class="fa-solid fa-ranking-star" style="color:#facc15;"></i> Ranking y Cantidad de Cajas por Empacador
+            <div class="card-icon-badge badge-warning"><i class="fa-solid fa-ranking-star"></i></div>
+            <span>Ranking y Cantidad de Cajas por Empacador</span>
           </div>
           <span class="dash-card-badge" id="dashEmployeeTableCountBadge">0 empacadores</span>
         </div>
@@ -1061,7 +1053,8 @@
       <div class="dash-card">
         <div class="dash-card-header">
           <div class="dash-card-title">
-            <i class="fa-solid fa-list-check" style="color:#a855f7;"></i> Registro y Trazabilidad de Picking (Auditoría en Tiempo Real)
+            <div class="card-icon-badge"><i class="fa-solid fa-list-check"></i></div>
+            <span>Registro y Trazabilidad de Picking (Auditoría)</span>
           </div>
           <span class="dash-card-badge" id="dashAuditCountBadge">ÚLTIMOS ESCANEOS</span>
         </div>
@@ -1095,7 +1088,12 @@
     <div class="tab-content" id="tab-employees">
       
       <div class="section-actions-bar">
-        <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-users"></i></div>
+          <span style="font-size:1.1rem; font-weight:800; color:var(--text-primary);">Nómina de Empacadores</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
           <div class="search-input-wrapper">
             <i class="fa-solid fa-magnifying-glass search-icon"></i>
             <input type="text" id="employeeSearchInput" class="search-input" placeholder="Buscar por nombre, código o DNI...">
@@ -1103,9 +1101,6 @@
           <button class="btn-secondary" id="btnFilterActiveEmployees">
             <i class="fa-solid fa-filter"></i> Solo Activos
           </button>
-        </div>
-
-        <div style="display:flex; gap:0.75rem;">
           <button class="btn-primary" id="btnNewEmployeeModal">
             <i class="fa-solid fa-user-plus"></i> Nuevo Empacador
           </button>
@@ -1172,20 +1167,21 @@
         </div>
 
         <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem; color:var(--text-secondary); font-size:0.85rem;">
-          <i class="fa-solid fa-arrows-rotate fa-spin" style="color:#38bdf8;"></i> Actualización en vivo vía Supabase Realtime
+          <i class="fa-solid fa-arrows-rotate fa-spin" style="color:var(--accent-primary);"></i> Actualización en vivo vía Supabase Realtime
         </div>
       </div>
 
       <!-- Ranking de Productividad de Empacadores -->
       <div class="side-card" style="margin-bottom:1.5rem;">
         <div class="card-header">
-          <div class="card-title">
-            <i class="fa-solid fa-ranking-star" style="color:#fbbf24;"></i> Ranking de Producción de Hoy
+          <div class="card-title" style="display:flex; align-items:center; gap:0.6rem;">
+            <div class="card-icon-badge badge-warning"><i class="fa-solid fa-ranking-star"></i></div>
+            <span>Ranking de Producción de Hoy</span>
           </div>
           <span style="font-size:0.8rem; color:var(--text-secondary);">Cajas embaladas por empleado</span>
         </div>
         <div class="card-body">
-          <div id="productionRankingsList" style="display:flex; flex-direction:column; gap:0.85rem;">
+          <div id="productionRankingsList" style="display:flex; flex-direction:column; gap:0.85rem; padding:1.25rem;">
             <!-- Barras de progreso de producción dinámicas -->
           </div>
         </div>
@@ -1240,13 +1236,16 @@
       <!-- Banner de Resumen de Liquidación -->
       <div class="payroll-summary-banner">
         <div class="payroll-banner-info">
-          <h2><i class="fa-solid fa-calculator"></i> Liquidación de Pago por Cajas Embaladas</h2>
-          <p id="payrollBannerSubtitle">Período: Cargando cálculo...</p>
+          <h2 style="display:flex; align-items:center; gap:0.65rem; margin:0 0 0.35rem 0;">
+            <div class="card-icon-badge"><i class="fa-solid fa-calculator"></i></div>
+            <span>Liquidación de Pago por Cajas Embaladas</span>
+          </h2>
+          <p id="payrollBannerSubtitle" style="margin:0;">Período: Cargando cálculo...</p>
         </div>
         <div class="payroll-banner-total">
-          <div style="font-size:0.8rem; color:#bfdbfe; text-transform:uppercase; font-weight:700;">Total a Pagar en Nómina</div>
+          <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700;">Total a Pagar en Nómina</div>
           <div class="amount" id="payrollTotalAmount">$ 0.00</div>
-          <div style="font-size:0.85rem; color:#fef08a;" id="payrollTotalBoxesCount">0 cajas en total</div>
+          <div style="font-size:0.85rem; color:var(--text-primary); font-weight:700;" id="payrollTotalBoxesCount">0 cajas en total</div>
         </div>
       </div>
 
@@ -1281,24 +1280,19 @@
       
       <!-- ====================================================================
            CONFIGURACIÓN DE ENVASE DE JORNADA (1 SOLA LÍNEA HORIZONTAL)
-           Las únicas 4 opciones posibles (el operador solo debe seleccionar 1 de ellas):
-           1. Primera CAJA 10 KG
-           2. Primera CAJA 13 LIBRAS
-           3. Segunda CAJA 10 KG
-           4. Segunda BOLSA 20 KG
            ==================================================================== -->
       <div class="packing-config-horizontal-card" style="max-width:1200px; margin:0 auto 1.5rem;">
-        <div class="config-h-title">
-          <i class="fa-solid fa-boxes-packing" style="color:var(--accent-garlic); font-size:1.15rem;"></i>
+        <div class="config-h-title" style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-boxes-packing"></i></div>
           <span>Envases de la Jornada:</span>
         </div>
         <div class="config-h-controls">
           <!-- Selector Calidad Primera (000 / 01) -->
           <div class="config-h-item">
-            <label for="selectEnvasePrimera" style="color:#38bdf8; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
+            <label for="selectEnvasePrimera" style="color:#059669; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
               <i class="fa-solid fa-medal"></i> 1ª (Primera):
             </label>
-            <select id="selectEnvasePrimera" class="form-control config-h-select" style="color:#38bdf8; border-color:rgba(56,189,248,0.4) !important;">
+            <select id="selectEnvasePrimera" class="form-control config-h-select" style="color:var(--text-primary); border-color:var(--border-color) !important;">
               <option value="Caja 10 kgs." selected>Caja 10 kgs.</option>
               <option value="Caja 14 kgs.">Caja 14 kgs.</option>
             </select>
@@ -1306,10 +1300,10 @@
 
           <!-- Selector Calidad Segunda (002 / 02) -->
           <div class="config-h-item">
-            <label for="selectEnvaseSegunda" style="color:#34d399; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
+            <label for="selectEnvaseSegunda" style="color:#2563EB; font-weight:800; margin:0; display:flex; align-items:center; gap:0.35rem; white-space:nowrap;">
               <i class="fa-solid fa-tags"></i> 2ª (Segunda):
             </label>
-            <select id="selectEnvaseSegunda" class="form-control config-h-select" style="color:#34d399; border-color:rgba(52,211,153,0.4) !important;">
+            <select id="selectEnvaseSegunda" class="form-control config-h-select" style="color:var(--text-primary); border-color:var(--border-color) !important;">
               <option value="Caja 10 kgs." selected>Caja 10 kgs.</option>
               <option value="Caja 14 kgs.">Caja 14 kgs.</option>
             </select>
@@ -1326,11 +1320,12 @@
         <!-- Parámetros de Operación & Tarifa -->
         <div class="side-card">
           <div class="card-header">
-            <div class="card-title">
-              <i class="fa-solid fa-sliders" style="color:var(--accent-garlic);"></i> Parámetros de Operación de Planta
+            <div class="card-title" style="display:flex; align-items:center; gap:0.6rem;">
+              <div class="card-icon-badge"><i class="fa-solid fa-sliders"></i></div>
+              <span>Parámetros de Operación de Planta</span>
             </div>
           </div>
-          <div class="card-body">
+          <div class="card-body" style="padding:1.25rem;">
             <div class="form-group">
               <label class="form-label">Tarifa Base por Caja Embalada ($)</label>
               <input type="number" id="cfgTarifaBase" class="form-control" value="150.00" step="1" min="0">
@@ -1357,20 +1352,21 @@
         <!-- Estado del Sistema y Diagnóstico Operativo -->
         <div class="side-card">
           <div class="card-header">
-            <div class="card-title">
-              <i class="fa-solid fa-server" style="color:#38bdf8;"></i> Estado del Sistema
+            <div class="card-title" style="display:flex; align-items:center; gap:0.6rem;">
+              <div class="card-icon-badge"><i class="fa-solid fa-server"></i></div>
+              <span>Estado del Sistema</span>
             </div>
             <button class="btn-test-sound" id="btnTestSupabaseConnection">
               <i class="fa-solid fa-plug"></i> Probar Conexión
             </button>
           </div>
-          <div class="card-body" style="display:flex; flex-direction:column; gap:1.25rem;">
+          <div class="card-body" style="display:flex; flex-direction:column; gap:1.25rem; padding:1.25rem;">
             
             <div style="background:var(--bg-primary); padding:1rem; border-radius:var(--radius-md); border:1px solid var(--border-color);">
               <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:700; margin-bottom:0.35rem;">Sincronización en la Nube</div>
               <div style="display:flex; align-items:center; gap:0.5rem;">
                 <div class="status-dot"></div>
-                <span style="font-weight:700; color:#34d399; font-size:1rem;">Base de Datos Conectada</span>
+                <span style="font-weight:700; color:#059669; font-size:1rem;">Base de Datos Conectada</span>
               </div>
               <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.4rem;">
                 Las lecturas de la pistola se sincronizan en tiempo real con respaldo offline.
@@ -1399,16 +1395,37 @@
          ======================================================================== -->
     <div class="tab-content" id="tab-users">
       <div class="section-actions-bar">
-        <div style="display:flex; align-items:center; gap:0.6rem;">
-          <h2 style="font-size:1.25rem; font-weight:800; color:var(--text-primary); margin:0;">
-            <i class="fa-solid fa-user-shield" style="color:#38bdf8;"></i> Gestión de Usuarios y Permisos
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-user-shield"></i></div>
+          <h2 style="font-size:1.15rem; font-weight:800; color:var(--text-primary); margin:0;">
+            Gestión de Usuarios y Permisos
           </h2>
-          <span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; font-size:0.75rem; font-weight:700; padding:0.2rem 0.5rem; border-radius:4px;">Exclusivo Administrador</span>
+          <span class="badge" style="background:var(--accent-light); color:var(--accent-primary); border:1px solid rgba(100,18,213,0.15); font-size:0.75rem; font-weight:700; padding:0.25rem 0.65rem; border-radius:20px;">Exclusivo Administrador</span>
         </div>
         <button class="btn-primary" id="btnNewUserModal">
           <i class="fa-solid fa-user-plus"></i> Nuevo Usuario
         </button>
       </div>
+
+      <!-- Tabla de Usuarios del Sistema -->
+      <div class="table-responsive">
+        <table class="data-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Nombre Completo</th>
+              <th>Rol / Nivel de Acceso</th>
+              <th>Estado</th>
+              <th>Fecha de Alta</th>
+              <th style="text-align:right;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <!-- Filas dinámicas de usuarios -->
+          </tbody>
+        </table>
+      </div>
+    </div>
 
       <!-- Tabla de Usuarios del Sistema -->
       <div class="table-responsive">
@@ -1440,7 +1457,10 @@
   <div class="modal-backdrop" id="modalEmployee">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 id="modalEmployeeTitle"><i class="fa-solid fa-user-plus"></i> Nuevo Empacador</h3>
+        <h3 id="modalEmployeeTitle" style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-user-plus"></i></div>
+          <span>Nuevo Empacador</span>
+        </h3>
         <button class="btn-close-modal" id="btnCloseEmployeeModal">&times;</button>
       </div>
       <form id="employeeForm">
@@ -1448,7 +1468,7 @@
         <div class="modal-body">
           <div class="form-group">
             <label class="form-label">Código de Empacador (4 Dígitos)</label>
-            <input type="text" id="empFormCode" class="form-control" placeholder="Ej: 0121" maxlength="10" required style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;">
+            <input type="text" id="empFormCode" class="form-control" placeholder="Ej: 0121" maxlength="10" required style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary);">
             <div class="form-hint">Primeros 4 dígitos del código de barra de 8 dígitos (ej: 0121).</div>
           </div>
 
@@ -1473,7 +1493,7 @@
           </div>
 
           <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
-            <input type="checkbox" id="empFormActive" checked style="width:18px; height:18px; accent-color:#10b981;">
+            <input type="checkbox" id="empFormActive" checked style="width:18px; height:18px; accent-color:var(--accent-primary);">
             <label for="empFormActive" style="font-weight:700; font-size:0.9rem; cursor:pointer;">Empleado Activo en Planta</label>
           </div>
         </div>
@@ -1491,7 +1511,10 @@
   <div class="modal-backdrop" id="modalManualScan">
     <div class="modal-card">
       <div class="modal-header">
-        <h3><i class="fa-solid fa-hand"></i> Colocar manualmente</h3>
+        <h3 style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-hand"></i></div>
+          <span>Colocar manualmente</span>
+        </h3>
         <button class="btn-close-modal" id="btnCloseManualModal">&times;</button>
       </div>
       <form id="manualScanForm">
@@ -1541,7 +1564,10 @@
   <div class="modal-backdrop" id="modalReceipt">
     <div class="modal-card" style="max-width:650px;">
       <div class="modal-header">
-        <h3><i class="fa-solid fa-receipt"></i> Recibo de Liquidación por Destajo</h3>
+        <h3 style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-receipt"></i></div>
+          <span>Recibo de Liquidación por Destajo</span>
+        </h3>
         <button class="btn-close-modal" id="btnCloseReceiptModal">&times;</button>
       </div>
       <div class="modal-body" id="receiptPrintArea" style="background:#ffffff; color:#0f172a; padding:2rem; border-radius:var(--radius-md);">
@@ -1560,7 +1586,10 @@
   <div class="modal-backdrop" id="modalUser">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 id="modalUserTitle"><i class="fa-solid fa-user-plus"></i> Nuevo Usuario</h3>
+        <h3 id="modalUserTitle" style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-user-shield"></i></div>
+          <span>Nuevo Usuario</span>
+        </h3>
         <button class="btn-close-modal" id="btnCloseUserModal">&times;</button>
       </div>
       <form id="userForm">
@@ -1594,7 +1623,7 @@
           </div>
 
           <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
-            <input type="checkbox" id="userFormActive" checked style="width:18px; height:18px; accent-color:#10b981;">
+            <input type="checkbox" id="userFormActive" checked style="width:18px; height:18px; accent-color:var(--accent-primary);">
             <label for="userFormActive" style="font-weight:700; font-size:0.9rem; cursor:pointer;">Usuario Habilitado / Activo</label>
           </div>
         </div>
@@ -1658,8 +1687,8 @@
   <div class="camera-scanner-overlay" id="mobileCameraModal" style="display:none;" role="dialog" aria-modal="true">
     <div class="camera-scanner-dialog">
       <div class="camera-scanner-header">
-        <div class="camera-header-left">
-          <i class="fa-solid fa-camera" style="color:#38bdf8; font-size:1.15rem;"></i>
+        <div class="camera-header-left" style="display:flex; align-items:center; gap:0.6rem;">
+          <div class="card-icon-badge"><i class="fa-solid fa-camera"></i></div>
           <span>Lector de Cámara</span>
         </div>
         <div class="camera-header-actions">
