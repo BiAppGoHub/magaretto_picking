@@ -3314,10 +3314,10 @@ function renderUsersTable() {
     return `
       <tr>
         <td>
-          <strong style="font-family:var(--font-mono); color:#38bdf8; font-size:0.95rem;">${escapeHtml(u.username)}</strong>
-          ${isSelf ? '<span class="badge" style="background:rgba(56,189,248,0.25); color:#38bdf8; font-size:0.65rem; margin-left:0.35rem; font-weight:800; padding:0.15rem 0.4rem; border-radius:3px;">TU SESIÓN</span>' : ''}
+          <strong style="font-family:var(--font-mono); color:var(--accent-primary); font-size:0.95rem;">${escapeHtml(u.username)}</strong>
+          ${isSelf ? '<span class="badge" style="background:var(--accent-light); color:var(--accent-primary); border:1px solid rgba(100,18,213,0.2); font-size:0.65rem; margin-left:0.4rem; font-weight:800; padding:0.15rem 0.5rem; border-radius:12px;">TU SESIÓN</span>' : ''}
         </td>
-        <td><strong>${escapeHtml(u.nombre_completo)}</strong></td>
+        <td><strong style="color:var(--text-primary);">${escapeHtml(u.nombre_completo)}</strong></td>
         <td>
           <span class="role-badge ${roleClass}">${escapeHtml(u.rol)}</span>
         </td>
@@ -3328,17 +3328,19 @@ function renderUsersTable() {
         </td>
         <td style="color:var(--text-secondary); font-size:0.85rem;">${createdDate}</td>
         <td style="text-align:right;">
-          <button class="btn-action-sm btn-edit-user" data-user-id="${u.id || u.username}" title="Editar Usuario">
-            <i class="fa-solid fa-pen-to-square"></i>
-          </button>
-          ${!isSelf ? `
-            <button class="btn-action-sm ${u.activo !== false ? 'btn-warn' : 'btn-ok'} btn-toggle-user-status" data-user-id="${u.id || u.username}" title="${u.activo !== false ? 'Desactivar' : 'Activar'}">
-              <i class="fa-solid ${u.activo !== false ? 'fa-user-xmark' : 'fa-user-check'}"></i>
+          <div style="display:inline-flex; align-items:center; justify-content:flex-end; gap:0.4rem;">
+            <button class="btn-action-sm btn-edit-user" data-user-id="${u.id || u.username}" title="Editar Usuario">
+              <i class="fa-solid fa-pen-to-square"></i>
             </button>
-            <button class="btn-action-sm btn-delete-user" data-user-id="${u.id || u.username}" title="Eliminar Usuario" style="color:#f87171;">
-              <i class="fa-solid fa-trash"></i>
-            </button>
-          ` : ''}
+            ${!isSelf ? `
+              <button class="btn-action-sm ${u.activo !== false ? 'btn-warn' : 'btn-ok'} btn-toggle-user-status" data-user-id="${u.id || u.username}" title="${u.activo !== false ? 'Desactivar acceso' : 'Activar acceso'}">
+                <i class="fa-solid ${u.activo !== false ? 'fa-user-xmark' : 'fa-user-check'}"></i>
+              </button>
+              <button class="btn-action-sm btn-delete-user" data-user-id="${u.id || u.username}" title="Eliminar Usuario">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            ` : ''}
+          </div>
         </td>
       </tr>
     `;

@@ -2697,36 +2697,146 @@ body {
 
 .role-badge {
   display: inline-block;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .role-admin, .role-badge.role-admin {
-  color: #c084fc;
-  background: rgba(192, 132, 252, 0.15);
-  border: 1px solid rgba(192, 132, 252, 0.3);
+  color: #6412D5;
+  background: #ECE6FA;
+  border: 1px solid rgba(100, 18, 213, 0.22);
 }
 
 .role-ejecutivo, .role-badge.role-ejecutivo {
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #1D4ED8;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
 }
 
 .role-rrhh, .role-badge.role-rrhh {
-  color: #34d399;
-  background: rgba(52, 211, 153, 0.15);
-  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #047857;
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
 }
 
 .role-usuario, .role-badge.role-usuario {
-  color: #cbd5e1;
-  background: rgba(203, 213, 225, 0.15);
-  border: 1px solid rgba(203, 213, 225, 0.3);
+  color: #475569;
+  background: #F1F5F9;
+  border: 1px solid #CBD5E1;
+}
+
+/* Status Chip */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-chip.active {
+  background: #ECFDF5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+}
+
+.status-chip.active .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+}
+
+.status-chip.inactive {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+}
+
+.status-chip.inactive .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #EF4444;
+}
+
+/* Modern Action Buttons in Tables */
+.btn-action-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: #FFFFFF;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.88rem;
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-action-sm:hover {
+  background: var(--accent-light);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+}
+
+.btn-action-sm.btn-edit-user {
+  color: var(--accent-primary);
+  background: var(--accent-light);
+  border-color: rgba(100, 18, 213, 0.2);
+}
+
+.btn-action-sm.btn-edit-user:hover {
+  background: var(--accent-primary);
+  color: #FFFFFF;
+  border-color: var(--accent-primary);
+}
+
+.btn-action-sm.btn-warn {
+  color: #D97706;
+  background: #FFFBEB;
+  border-color: #FDE68A;
+}
+
+.btn-action-sm.btn-warn:hover {
+  background: #D97706;
+  color: #FFFFFF;
+  border-color: #D97706;
+}
+
+.btn-action-sm.btn-ok {
+  color: #059669;
+  background: #ECFDF5;
+  border-color: #A7F3D0;
+}
+
+.btn-action-sm.btn-ok:hover {
+  background: #059669;
+  color: #FFFFFF;
+  border-color: #059669;
+}
+
+.btn-action-sm.btn-delete-user {
+  color: #DC2626 !important;
+  background: #FEF2F2 !important;
+  border-color: #FECACA !important;
+}
+
+.btn-action-sm.btn-delete-user:hover {
+  background: #DC2626 !important;
+  color: #FFFFFF !important;
+  border-color: #DC2626 !important;
 }
 
 .btn-logout {
