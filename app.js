@@ -3045,6 +3045,64 @@ function initSidebarController() {
   }
 }
 
+// ==============================================================================
+// CONTROLADOR DE TEMA CLARO / OSCURO (THEME MANAGER)
+// ==============================================================================
+const ThemeManager = {
+  storageKey: 'magaretto_theme',
+
+  init() {
+    const btnToggle = document.getElementById('btnThemeToggle');
+    const saved = localStorage.getItem(this.storageKey);
+    // Preferencia guardada o por defecto light (respetando la paleta institucional)
+    const initialTheme = (saved === 'dark') ? 'dark' : 'light';
+    
+    this.applyTheme(initialTheme);
+
+    if (btnToggle) {
+      btnToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+        const newTheme = (currentTheme === 'dark') ? 'light' : 'dark';
+        this.applyTheme(newTheme);
+        showToast(newTheme === 'dark' ? 'Modo oscuro activado' : 'Modo claro activado', 'info');
+      });
+    }
+  },
+
+  applyTheme(theme) {
+    const isDark = (theme === 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+    if (isDark) {
+      document.documentElement.classList.add('dark-theme');
+      document.body.classList.add('dark-theme');
+    } else {
+      document.documentElement.classList.remove('dark-theme');
+      document.body.classList.remove('dark-theme');
+    }
+
+    try {
+      localStorage.setItem(this.storageKey, theme);
+    } catch (_) {}
+
+    // Actualizar icono, texto y tooltip accesible del botón
+    const icon = document.getElementById('themeToggleIcon');
+    const text = document.getElementById('themeToggleText');
+    const btn = document.getElementById('btnThemeToggle');
+
+    if (icon) {
+      icon.className = isDark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+    }
+    if (text) {
+      text.textContent = isDark ? 'Modo Claro' : 'Modo Oscuro';
+    }
+    if (btn) {
+      const label = isDark ? 'Cambiar a Modo Claro' : 'Cambiar a Modo Oscuro';
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+    }
+  }
+};
+
 const AuthManager = {
   sessionKey: 'vete_auth_session_v1',
 
@@ -3424,6 +3482,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 0B. Inicializar Controlador de Barra Lateral (AGENTS.md)
   initSidebarController();
+
+  // 0C. Inicializar Selector de Tema Claro / Oscuro
+  ThemeManager.init();
 
   // 1. Inicializar Pestañas con switchTab
   document.querySelectorAll('.nav-tab').forEach(tabBtn => {

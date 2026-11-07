@@ -46,6 +46,22 @@
     })();
   </script>
 
+  <!-- Detección Temprana de Modo Claro / Oscuro (Anti-FOUC) -->
+  <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('magaretto_theme');
+        if (savedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.classList.add('dark-theme');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.classList.remove('dark-theme');
+        }
+      } catch (e) {}
+    })();
+  </script>
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -228,6 +244,12 @@
         </div>
 
         <div class="topbar-right">
+          <!-- Botón de Alternancia Modo Claro / Oscuro -->
+          <button type="button" class="btn-theme-toggle" id="btnThemeToggle" title="Cambiar a Modo Oscuro" aria-label="Cambiar tema claro u oscuro">
+            <i class="fa-solid fa-moon" id="themeToggleIcon"></i>
+            <span class="theme-toggle-label hide-mobile" id="themeToggleText">Modo Oscuro</span>
+          </button>
+
           <!-- Indicador Base de Datos -->
           <div class="connection-status" id="connectionBadge" title="Estado de sincronización con la base de datos">
             <div class="status-dot" id="connectionDot"></div>
