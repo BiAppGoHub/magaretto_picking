@@ -2770,7 +2770,7 @@ function exportPayrollToCSV() {
 
   const { startDate, endDate, items } = AppState.currentPayrollData;
   let csvContent = 'data:text/csv;charset=utf-8,\uFEFF'; // UTF-8 BOM para tildes en Excel
-  csvContent += `EMPRESA;VETE - CONTROL DE EMPAQUE Y PICKING\n`;
+  csvContent += `EMPRESA;MAGARETTO - CONTROL DE EMPAQUE Y PICKING\n`;
   csvContent += `LIQUIDACION DE PAGO A DESTAJO;DESDE ${startDate} HASTA ${endDate}\n\n`;
   csvContent += `CODIGO;EMPLEADO;DNI_RUT;TOTAL_CAJAS;TARIFA_PROMEDIO;TOTAL_A_PAGAR\n`;
 
@@ -2782,7 +2782,7 @@ function exportPayrollToCSV() {
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement('a');
   link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `VETE_Liquidacion_${startDate}_al_${endDate}.csv`);
+  link.setAttribute('download', `MAGARETTO_Liquidacion_${startDate}_al_${endDate}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -2801,20 +2801,20 @@ function generateReceiptModal(empName, empCode, empDni, boxes, totalAmount, star
   const avgRate = boxes > 0 ? (totalAmount / boxes).toFixed(2) : APP_CONFIG.TARIFA_BASE.toFixed(2);
 
   printArea.innerHTML = `
-    <div style="text-align:center; border-bottom:2px solid #0f172a; padding-bottom:1rem; margin-bottom:1.5rem;">
-      <h2 style="font-size:1.6rem; font-weight:900; color:#0f172a; margin-bottom:0.25rem;">VETE</h2>
-      <div style="font-size:0.9rem; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.1em;">Control de Empaque y Picking de Cajas</div>
+    <div style="text-align:center; border-bottom:2px solid #0B1C30; padding-bottom:1rem; margin-bottom:1.5rem;">
+      <h2 style="font-size:1.6rem; font-weight:900; color:#0B1C30; margin-bottom:0.25rem;">MAGARETTO</h2>
+      <div style="font-size:0.9rem; font-weight:700; color:#6412D5; text-transform:uppercase; letter-spacing:0.1em;">Control de Empaque y Picking de Cajas</div>
       <div style="font-size:0.8rem; color:#64748b;">Comprobante de Pago por Trabajo a Destajo / Cajas Embaladas</div>
     </div>
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; font-size:0.95rem;">
       <div>
         <strong style="color:#64748b; font-size:0.8rem; text-transform:uppercase; display:block;">Empacador:</strong>
-        <span style="font-size:1.15rem; font-weight:800; color:#0f172a;">${escapeHtml(empName)}</span>
+        <span style="font-size:1.15rem; font-weight:800; color:#0B1C30;">${escapeHtml(empName)}</span>
       </div>
       <div>
         <strong style="color:#64748b; font-size:0.8rem; text-transform:uppercase; display:block;">Código / Identificación:</strong>
-        <span style="font-family:monospace; font-weight:700; color:#0f172a;">${escapeHtml(empCode)} ${empDni ? `| DNI: ${escapeHtml(empDni)}` : ''}</span>
+        <span style="font-family:monospace; font-weight:700; color:#0B1C30;">${escapeHtml(empCode)} ${empDni ? `| DNI: ${escapeHtml(empDni)}` : ''}</span>
       </div>
       <div>
         <strong style="color:#64748b; font-size:0.8rem; text-transform:uppercase; display:block;">Período Liquidado:</strong>
@@ -2852,10 +2852,10 @@ function generateReceiptModal(empName, empCode, empDni, boxes, totalAmount, star
     </table>
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:3rem; margin-top:3.5rem; text-align:center; font-size:0.85rem;">
-      <div style="border-top:1px solid #0f172a; padding-top:0.5rem;">
-        Firma Responsable Recursos Humanos<br><strong>VETE</strong>
+      <div style="border-top:1px solid #0B1C30; padding-top:0.5rem;">
+        Firma Responsable Recursos Humanos<br><strong>MAGARETTO</strong>
       </div>
-      <div style="border-top:1px solid #0f172a; padding-top:0.5rem;">
+      <div style="border-top:1px solid #0B1C30; padding-top:0.5rem;">
         Firma y Aclaración del Empacador<br>Recibí Conforme
       </div>
     </div>
@@ -2876,16 +2876,16 @@ function printSingleBarcodeCard(svgId, name, code) {
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Etiqueta ${code} - VETE</title>
+        <title>Etiqueta ${code} - MAGARETTO</title>
         <style>
           body { margin: 0; padding: 10px; font-family: sans-serif; text-align: center; }
-          .tag { font-size: 11px; font-weight: bold; color: #b45309; text-transform: uppercase; margin-bottom: 4px; }
+          .tag { font-size: 11px; font-weight: bold; color: #6412D5; text-transform: uppercase; margin-bottom: 4px; }
           .name { font-size: 16px; font-weight: 900; margin-bottom: 8px; color: #000; }
           svg { width: 100%; max-height: 80px; }
         </style>
       </head>
       <body>
-        <div class="tag">VETE - CONTROL DE EMPAQUE</div>
+        <div class="tag">MAGARETTO - CONTROL DE EMPAQUE</div>
         <div class="name">${name}</div>
         ${card.querySelector('svg').outerHTML}
         <script>window.onload = function() { window.print(); window.close(); };<\/script>
@@ -3078,7 +3078,7 @@ const AuthManager = {
 
     if (btnLogout) {
       btnLogout.addEventListener('click', () => {
-        if (confirm('¿Cerrar sesión de VETE?')) {
+        if (confirm('¿Cerrar sesión de MAGARETTO?')) {
           this.logout();
         }
       });
@@ -3855,7 +3855,7 @@ const PwaInstallManager = {
         this.deferredPrompt.prompt();
         const { outcome } = await this.deferredPrompt.userChoice;
         if (outcome === 'accepted') {
-          showToast('🎉 ¡Gracias por instalar VETE!', 'success');
+          showToast('🎉 ¡Gracias por instalar MAGARETTO!', 'success');
           container.style.display = 'none';
         }
         this.deferredPrompt = null;
@@ -5571,7 +5571,7 @@ const DashboardManager = {
       XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumen Empacadores');
 
       // 4. Descargar archivo Excel .xlsx
-      const fileName = `VETE_Picking_Dashboard_${this.filters.dateFrom}_al_${this.filters.dateTo}.xlsx`;
+      const fileName = `MAGARETTO_Picking_Dashboard_${this.filters.dateFrom}_al_${this.filters.dateTo}.xlsx`;
       try {
         XLSX.writeFile(wb, fileName);
       } catch (writeErr) {
@@ -5657,7 +5657,7 @@ const DashboardManager = {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `VETE_Picking_Dashboard_${this.filters.dateFrom}_al_${this.filters.dateTo}.csv`;
+    a.download = `MAGARETTO_Picking_Dashboard_${this.filters.dateFrom}_al_${this.filters.dateTo}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
