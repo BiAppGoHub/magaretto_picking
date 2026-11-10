@@ -56,6 +56,15 @@ const AppState = {
 // Usuarios iniciales del sistema (Roles: Administrador, Ejecutivo, RRHH, Usuario)
 const DEFAULT_SYSTEM_USERS = [
   {
+    id: 'user-nico',
+    username: 'nico',
+    nombre_completo: 'Nico',
+    password_hash: 'e6d5e47d930591f026ca645226934cb5f4bf45d961da19b828c0f7f1ca34da8d', // chicho
+    rol: 'Administrador',
+    activo: true,
+    created_at: new Date().toISOString()
+  },
+  {
     id: 'user-admin',
     username: 'admin',
     nombre_completo: 'Administrador General Magaretto',
