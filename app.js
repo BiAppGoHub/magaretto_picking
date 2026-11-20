@@ -392,8 +392,8 @@ const PackingOptions = {
     const kpiVal = document.getElementById('kpiEnvaseActivo');
     if (kpiVal) {
       kpiVal.innerHTML = `
-        <span style="color:#38bdf8; font-size:0.75rem; font-weight:800; white-space:nowrap;">1ª: <strong>${primera}</strong></span>
-        <span style="color:#34d399; font-size:0.75rem; font-weight:800; white-space:nowrap;">2ª: <strong>${segunda}</strong></span>
+        <span class="envase-line-1">1ª: <strong>${primera}</strong></span>
+        <span class="envase-line-2">2ª: <strong>${segunda}</strong></span>
       `;
       kpiVal.title = `Primera (000): ${primera} · Segunda (002): ${segunda}`;
     }
@@ -706,7 +706,577 @@ class SoundEngine {
 const AudioPlayer = new SoundEngine();
 
 // ==============================================================================
-// 3. DRIVER DE CAPTURA PARA PISTOLA LECTORA DE CÓDIGOS DE BARRA USB
+// 3. GESTOR MULTI-ZONA (3 ZONAS DE MARCADO x 2 ESCÁNERES = 6 ESCÁNERES EN 1 PC)
+// ==============================================================================
+const MultiZoneScannerManager = {
+  storageKey: 'magaretto_zones_config_v1',
+  ZONES: [
+    { id: 'zona_1', name: 'Zona 1', shortName: 'Z1', scanners: [1, 2], color: '#60A5FA' },
+    { id: 'zona_2', name: 'Zona 2', shortName: 'Z2', scanners: [3, 4], color: '#22C55E' },
+    { id: 'zona_3', name: 'Zona 3', shortName: 'Z3', scanners: [5, 6], color: '#A78BFA' }
+  ],
+  config: {
+    prefixes: { 1: 'S1', 2: 'S2', 3: 'S3', 4: 'S4', 5: 'S5', 6: 'S6' },
+    duplicateScope: 'zone', // 'zone' | 'scanner'
+    autoRouteSimultaneous: true,
+    activeZoneId: 'zona_1'
+  },
+  lastTimeByScopeKey: {},
+  cooldownMetaByZone: {}, // { zona_1: { code, expiresAt, lastLabel } }
+  serialConnections: {},
+  _tickerInterval: null,
+  _initialized: false,
+
+  init() {
+    this.loadConfig();
+    if (!this._initialized) {
+      this._initialized = true;
+      this.bindUIEvents();
+      this.startCooldownTicker();
+    }
+    this.syncSettingsUI();
+    this.refreshZoneCounts();
+  },
+
+  loadConfig() {
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.prefixes && typeof parsed.prefixes === 'object') {
+            for (let id = 1; id <= 6; id++) {
+              const p = String(parsed.prefixes[id] || `S${id}`).trim().toUpperCase();
+              this.config.prefixes[id] = p || `S${id}`;
+            }
+          }
+          if (parsed.duplicateScope === 'scanner' || parsed.duplicateScope === 'zone') {
+            this.config.duplicateScope = parsed.duplicateScope;
+          }
+          if (typeof parsed.autoRouteSimultaneous === 'boolean') {
+            this.config.autoRouteSimultaneous = parsed.autoRouteSimultaneous;
+          }
+          if (this.getZoneMeta(parsed.activeZoneId)) {
+            this.config.activeZoneId = parsed.activeZoneId;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error cargando config de zonas:', e);
+    }
+  },
+
+  saveConfig(nextConfig = {}) {
+    if (nextConfig.prefixes) {
+      for (let id = 1; id <= 6; id++) {
+        const val = String(nextConfig.prefixes[id] || `S${id}`).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+        this.config.prefixes[id] = val || `S${id}`;
+      }
+    }
+    if (nextConfig.duplicateScope === 'scanner' || nextConfig.duplicateScope === 'zone') {
+      this.config.duplicateScope = nextConfig.duplicateScope;
+    }
+    if (typeof nextConfig.autoRouteSimultaneous === 'boolean') {
+      this.config.autoRouteSimultaneous = nextConfig.autoRouteSimultaneous;
+    }
+    if (nextConfig.activeZoneId && this.getZoneMeta(nextConfig.activeZoneId)) {
+      this.config.activeZoneId = nextConfig.activeZoneId;
+    }
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.config));
+    } catch (_) {}
+    this.syncSettingsUI();
+    this.refreshZoneCounts();
+  },
+
+  getZoneMeta(zoneId) {
+    return this.ZONES.find(z => z.id === zoneId) || null;
+  },
+
+  getScannerZone(scannerId) {
+    const sid = Number(scannerId);
+    return this.ZONES.find(z => z.scanners.includes(sid)) || this.ZONES[0];
+  },
+
+  getDefaultScannerForZone(zoneId) {
+    const z = this.getZoneMeta(zoneId) || this.ZONES[0];
+    return z.scanners[0];
+  },
+
+  buildPrefixEntries() {
+    const entries = [];
+    for (let id = 1; id <= 6; id++) {
+      const p = String(this.config.prefixes[id] || `S${id}`).trim().toUpperCase();
+      if (p) {
+        const z = this.getScannerZone(id);
+        entries.push({ prefix: p, zoneId: z.id, zoneName: z.name, scannerId: id, sepOptional: true });
+      }
+    }
+    // Aliases estándar compatibles (S1..S6, E1..E6, Z1..Z3, 1-..3-, 1:..3:, 1#..3#)
+    for (let id = 1; id <= 6; id++) {
+      const z = this.getScannerZone(id);
+      entries.push({ prefix: `S${id}`, zoneId: z.id, zoneName: z.name, scannerId: id, sepOptional: true });
+      entries.push({ prefix: `E${id}`, zoneId: z.id, zoneName: z.name, scannerId: id, sepOptional: true });
+    }
+    this.ZONES.forEach((z, idx) => {
+      const num = idx + 1;
+      entries.push({ prefix: `ZONA${num}`, zoneId: z.id, zoneName: z.name, scannerId: z.scanners[0], sepOptional: true });
+      entries.push({ prefix: `Z${num}`, zoneId: z.id, zoneName: z.name, scannerId: z.scanners[0], sepOptional: true });
+      entries.push({ prefix: `${num}-`, zoneId: z.id, zoneName: z.name, scannerId: z.scanners[0], sepOptional: true });
+      entries.push({ prefix: `${num}:`, zoneId: z.id, zoneName: z.name, scannerId: z.scanners[0], sepOptional: true });
+      entries.push({ prefix: `${num}#`, zoneId: z.id, zoneName: z.name, scannerId: z.scanners[0], sepOptional: true });
+    });
+
+    // Deduplicar conservando prioridad de prefijos configurados y ordenando de mayor a menor longitud
+    const seen = new Map();
+    entries.forEach(e => {
+      if (!seen.has(e.prefix)) seen.set(e.prefix, e);
+    });
+    return Array.from(seen.values()).sort((a, b) => b.prefix.length - a.prefix.length);
+  },
+
+  matchPrefixAtStart(str, prefixEntries) {
+    const upper = String(str || '').toUpperCase();
+    for (let i = 0; i < prefixEntries.length; i++) {
+      const entry = prefixEntries[i];
+      if (upper.startsWith(entry.prefix)) {
+        let rest = upper.slice(entry.prefix.length);
+        // Remover separador opcional después del prefijo (ej: S1-0000121, Z2:0000121)
+        if (/^[-:_#]/.test(rest)) {
+          rest = rest.slice(1);
+        }
+        if (rest.length >= 4) {
+          return { entry, bodyStartOffset: upper.length - rest.length, rest };
+        }
+      }
+    }
+    return null;
+  },
+
+  parseSingleChunk(chunk, prefixEntries) {
+    const tokens = [];
+    const upper = String(chunk || '').trim().toUpperCase();
+    if (!upper) return tokens;
+
+    // 1. Intentar separar múltiples códigos prefijados concatenados (ej: S10000121S30000121)
+    let pos = 0;
+    const firstMatch = this.matchPrefixAtStart(upper, prefixEntries);
+    if (firstMatch) {
+      while (pos < upper.length) {
+        const sub = upper.slice(pos);
+        const m = this.matchPrefixAtStart(sub, prefixEntries);
+        if (!m) break;
+
+        const bodyStart = pos + m.bodyStartOffset;
+        let nextPrefixPos = upper.length;
+
+        // Buscar siguiente prefijo válido a partir de al menos 6 caracteres del cuerpo
+        for (let scanIdx = bodyStart + 6; scanIdx < upper.length; scanIdx++) {
+          const tail = upper.slice(scanIdx);
+          const nextM = this.matchPrefixAtStart(tail, prefixEntries);
+          if (nextM && /^[0-9A-Z]{6,}/.test(nextM.rest)) {
+            nextPrefixPos = scanIdx;
+            break;
+          }
+        }
+
+        const rawCodeBody = upper.slice(bodyStart, nextPrefixPos).replace(/[^0-9A-Z]/g, '');
+        if (rawCodeBody) {
+          tokens.push({
+            rawToken: upper.slice(pos, nextPrefixPos),
+            cleanCode: rawCodeBody,
+            zoneId: m.entry.zoneId,
+            zoneName: m.entry.zoneName,
+            scannerId: m.entry.scannerId,
+            hadExplicitZone: true
+          });
+        }
+        pos = nextPrefixPos;
+      }
+      if (tokens.length > 0) return tokens;
+    }
+
+    // 2. Sin prefijo explícito: verificar si hay múltiples códigos VETE de 7 dígitos pegados (ej: 00001210000121)
+    const clean = upper.replace(/[^0-9A-Z]/g, '');
+    if (clean.length >= 14 && clean.length % 7 === 0 && /^(?:(?:000|002|003)\d{4}){2,}$/.test(clean)) {
+      for (let i = 0; i < clean.length; i += 7) {
+        const part = clean.slice(i, i + 7);
+        tokens.push({
+          rawToken: part,
+          cleanCode: part,
+          zoneId: null,
+          zoneName: null,
+          scannerId: null,
+          hadExplicitZone: false
+        });
+      }
+      return tokens;
+    }
+
+    // 3. Token único sin prefijo
+    if (clean) {
+      tokens.push({
+        rawToken: upper,
+        cleanCode: clean,
+        zoneId: null,
+        zoneName: null,
+        scannerId: null,
+        hadExplicitZone: false
+      });
+    }
+    return tokens;
+  },
+
+  parseBurst(rawBuffer) {
+    const text = String(rawBuffer || '').trim();
+    if (!text) return [];
+    const prefixEntries = this.buildPrefixEntries();
+    const rawChunks = text.split(/[\r\n,;|+\s]+/).filter(Boolean);
+    const allTokens = [];
+    rawChunks.forEach(chunk => {
+      const parsed = this.parseSingleChunk(chunk, prefixEntries);
+      parsed.forEach(tok => allTokens.push(tok));
+    });
+    return allTokens;
+  },
+
+  getDedupScopeKey(zoneId, scannerId, cleanCode) {
+    if (this.config.duplicateScope === 'scanner' && scannerId) {
+      return `scanner_${scannerId}__${cleanCode}`;
+    }
+    return `${zoneId}__${cleanCode}`;
+  },
+
+  resolveZoneForScan(tokenInfo, cleanCode, now, options = {}) {
+    const toleranceMs = (Number(APP_CONFIG.TOLERANCIA_DUPLICADO_SEG) || 5) * 1000;
+    let targetZoneId = options.zoneId || (tokenInfo && tokenInfo.zoneId) || this.config.activeZoneId || 'zona_1';
+    let targetScannerId = options.scannerId || (tokenInfo && tokenInfo.scannerId) || this.getDefaultScannerForZone(targetZoneId);
+    const hadExplicitZone = Boolean(options.zoneId || (tokenInfo && tokenInfo.hadExplicitZone));
+    let autoRouted = false;
+
+    // Si llega sin prefijo de zona y la zona activa está dentro de la ventana anti-duplicado para ese código,
+    // asumir lectura simultánea en otra zona y derivar a la primera zona libre (Zona 1 -> Zona 2 -> Zona 3).
+    if (!hadExplicitZone && !options.ignoreDuplicate && this.config.autoRouteSimultaneous) {
+      const primaryKey = this.getDedupScopeKey(targetZoneId, targetScannerId, cleanCode);
+      const primaryElapsed = now - (this.lastTimeByScopeKey[primaryKey] || 0);
+      if (primaryElapsed < toleranceMs) {
+        const startIdx = this.ZONES.findIndex(z => z.id === targetZoneId);
+        for (let step = 1; step < this.ZONES.length; step++) {
+          const candidate = this.ZONES[(Math.max(0, startIdx) + step) % this.ZONES.length];
+          const candidateScanner = candidate.scanners[0];
+          const candKey = this.getDedupScopeKey(candidate.id, candidateScanner, cleanCode);
+          const candElapsed = now - (this.lastTimeByScopeKey[candKey] || 0);
+          if (candElapsed >= toleranceMs) {
+            targetZoneId = candidate.id;
+            targetScannerId = candidateScanner;
+            autoRouted = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const zoneMeta = this.getZoneMeta(targetZoneId) || this.ZONES[0];
+    const resolvedScannerId = targetScannerId || zoneMeta.scanners[0];
+    const dedupScopeKey = this.getDedupScopeKey(zoneMeta.id, resolvedScannerId, cleanCode);
+    const deviceLabel = options.origenDispositivo
+      ? options.origenDispositivo
+      : `Escáner ${resolvedScannerId} (${zoneMeta.name})`;
+
+    return {
+      zoneId: zoneMeta.id,
+      zoneName: zoneMeta.name,
+      scannerId: resolvedScannerId,
+      deviceLabel,
+      hadExplicitZone,
+      autoRouted,
+      dedupScopeKey
+    };
+  },
+
+  isDuplicate(dedupScopeKey, now, toleranceSec) {
+    const lastTime = this.lastTimeByScopeKey[dedupScopeKey] || 0;
+    const elapsedSec = (now - lastTime) / 1000;
+    const tol = Number(toleranceSec) || 5;
+    return {
+      blocked: lastTime > 0 && elapsedSec < tol,
+      elapsedSec,
+      remainingSec: Math.max(0, Math.ceil(tol - elapsedSec))
+    };
+  },
+
+  markScanned(resolved, cleanCode, now, meta = {}) {
+    this.lastTimeByScopeKey[resolved.dedupScopeKey] = now;
+    AppState.lastScannedTimeByCode[resolved.dedupScopeKey] = now;
+
+    const tolMs = (Number(APP_CONFIG.TOLERANCIA_DUPLICADO_SEG) || 5) * 1000;
+    this.cooldownMetaByZone[resolved.zoneId] = {
+      code: cleanCode,
+      empName: meta.empName || '',
+      expiresAt: now + tolMs
+    };
+
+    const lastEl = document.getElementById(`zoneLastScan_${resolved.zoneId}`);
+    if (lastEl) {
+      const timeStr = new Date(now).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      lastEl.textContent = `${meta.empName || cleanCode} · E${resolved.scannerId} (${timeStr})`;
+    }
+
+    this.notifyZoneResult(resolved.zoneId, resolved.scannerId, 'ok');
+    this.updateCooldownBadges();
+  },
+
+  notifyZoneResult(zoneId, scannerId, status) {
+    const card = document.getElementById(`zoneCard_${zoneId}`);
+    if (card) {
+      card.classList.remove('zone-flash-ok', 'zone-flash-dup');
+      void card.offsetWidth;
+      card.classList.add(status === 'duplicate' ? 'zone-flash-dup' : 'zone-flash-ok');
+    }
+    if (scannerId) {
+      const pill = document.getElementById(`scannerPill${scannerId}`);
+      if (pill) {
+        pill.classList.remove('active-pulse');
+        void pill.offsetWidth;
+        pill.classList.add('active-pulse');
+        setTimeout(() => pill.classList.remove('active-pulse'), 850);
+      }
+    }
+  },
+
+  setActiveZone(zoneId) {
+    if (!this.getZoneMeta(zoneId)) return;
+    this.config.activeZoneId = zoneId;
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.config));
+    } catch (_) {}
+    this.ZONES.forEach(z => {
+      const card = document.getElementById(`zoneCard_${z.id}`);
+      if (card) card.classList.toggle('is-default', z.id === zoneId);
+    });
+  },
+
+  refreshZoneCounts() {
+    const counts = { zona_1: 0, zona_2: 0, zona_3: 0 };
+    const latest = { zona_1: null, zona_2: null, zona_3: null };
+
+    (AppState.todayScans || []).forEach(s => {
+      const linea = String(s.linea_empaque || '').toLowerCase();
+      const orig = String(s.origen_dispositivo || '').toLowerCase();
+      let zKey = 'zona_1';
+      if (linea.includes('zona 2') || orig.includes('zona 2') || orig.includes('escáner 3') || orig.includes('escáner 4')) {
+        zKey = 'zona_2';
+      } else if (linea.includes('zona 3') || orig.includes('zona 3') || orig.includes('escáner 5') || orig.includes('escáner 6')) {
+        zKey = 'zona_3';
+      }
+      counts[zKey]++;
+      if (!latest[zKey]) latest[zKey] = s;
+    });
+
+    this.ZONES.forEach(z => {
+      const countEl = document.getElementById(`zoneCount_${z.id}`);
+      if (countEl) countEl.textContent = counts[z.id].toLocaleString('es-AR');
+
+      const lastEl = document.getElementById(`zoneLastScan_${z.id}`);
+      if (lastEl && latest[z.id]) {
+        const dt = new Date(latest[z.id].fecha_hora || Date.now());
+        const t = isNaN(dt.getTime()) ? '' : dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        lastEl.textContent = `${latest[z.id].empleado_nombre_snapshot || latest[z.id].codigo_barra_leido} (${t})`;
+      }
+
+      const card = document.getElementById(`zoneCard_${z.id}`);
+      if (card) card.classList.toggle('is-default', z.id === this.config.activeZoneId);
+    });
+
+    for (let id = 1; id <= 6; id++) {
+      const lbl = document.getElementById(`scannerPrefixLbl${id}`);
+      if (lbl) lbl.textContent = this.config.prefixes[id] || `S${id}`;
+    }
+  },
+
+  updateCooldownBadges() {
+    const now = Date.now();
+    this.ZONES.forEach(z => {
+      const badge = document.getElementById(`zoneCooldown_${z.id}`);
+      if (!badge) return;
+      const meta = this.cooldownMetaByZone[z.id];
+      if (meta && meta.expiresAt > now) {
+        const rem = Math.ceil((meta.expiresAt - now) / 1000);
+        badge.textContent = `Anti-dup ${meta.code}: ${rem}s`;
+        badge.classList.add('cooling');
+      } else {
+        badge.textContent = 'LISTO';
+        badge.classList.remove('cooling');
+      }
+    });
+  },
+
+  startCooldownTicker() {
+    if (this._tickerInterval) clearInterval(this._tickerInterval);
+    this._tickerInterval = setInterval(() => this.updateCooldownBadges(), 500);
+  },
+
+  syncSettingsUI() {
+    for (let id = 1; id <= 6; id++) {
+      const input = document.getElementById(`cfgScanner${id}Prefix`);
+      if (input) input.value = this.config.prefixes[id] || `S${id}`;
+      const lbl = document.getElementById(`scannerPrefixLbl${id}`);
+      if (lbl) lbl.textContent = this.config.prefixes[id] || `S${id}`;
+    }
+    const scopeSel = document.getElementById('cfgDuplicateScope');
+    if (scopeSel) scopeSel.value = this.config.duplicateScope;
+    const autoChk = document.getElementById('cfgAutoRouteNoPrefix');
+    if (autoChk) autoChk.checked = this.config.autoRouteSimultaneous;
+    const modeChip = document.getElementById('multiZoneModeChip');
+    if (modeChip) {
+      modeChip.textContent = this.config.duplicateScope === 'scanner'
+        ? 'Anti-duplicado por escáner individual'
+        : 'Anti-duplicado independiente por zona';
+    }
+  },
+
+  async pairSerialScanner(scannerId) {
+    if (!('serial' in navigator)) {
+      showToast('Web Serial requiere Chrome/Edge en HTTPS o localhost. En red local usá prefijos S1..S6 en las pistolas USB.', 'warning');
+      return;
+    }
+    try {
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      const zone = this.getScannerZone(scannerId);
+      const btn = document.getElementById(`btnPairSerial_${scannerId}`);
+      const pill = document.getElementById(`scannerPill${scannerId}`);
+      if (btn) {
+        btn.classList.add('paired');
+        btn.innerHTML = `<i class="fa-solid fa-link"></i> COM ${scannerId} OK`;
+      }
+      if (pill) pill.classList.add('serial-connected');
+
+      this.serialConnections[scannerId] = port;
+      showToast(`Escáner ${scannerId} (${zone.name}) conectado por puerto COM.`, 'success');
+
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable).catch(() => {});
+      const reader = decoder.readable.getReader();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          buffer += value;
+          const lines = buffer.split(/[\r\n]+/);
+          buffer = lines.pop() || '';
+          lines.forEach(line => {
+            const code = line.trim();
+            if (code) {
+              dispatchBarcodeBurst(code, {
+                zoneId: zone.id,
+                scannerId,
+                hadExplicitZone: true,
+                origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
+              });
+            }
+          });
+        }
+      }
+    } catch (err) {
+      if (err && err.name !== 'NotFoundError') {
+        showToast(`No se pudo abrir puerto COM ${scannerId}: ${err.message}`, 'error');
+      }
+    }
+  },
+
+  runSimultaneousTest() {
+    const activeEmp = (AppState.employees || []).find(e => e.activo !== false) || (AppState.employees || [])[0];
+    if (!activeEmp) {
+      showToast('Registre al menos un empacador activo para probar lecturas simultáneas.', 'warning');
+      return;
+    }
+    const empCode4 = String(activeEmp.codigo_empleado || '').replace(/\D/g, '').padStart(4, '0').substring(0, 4);
+    const sameBarcode = `000${empCode4}`;
+    const p1 = this.config.prefixes[1] || 'S1';
+    const p3 = this.config.prefixes[3] || 'S3';
+    const burst = `${p1}${sameBarcode}${p3}${sameBarcode}`;
+
+    dispatchBarcodeBurst(burst, {});
+    showToast(`⚡ Prueba simultánea: mismo código ${sameBarcode} registrado en Zona 1 (E1) y Zona 2 (E3) al mismo tiempo.`, 'success');
+  },
+
+  bindUIEvents() {
+    this.ZONES.forEach(z => {
+      const card = document.getElementById(`zoneCard_${z.id}`);
+      if (card) {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('input, button')) return;
+          this.setActiveZone(z.id);
+        });
+      }
+
+      const quickInput = document.getElementById(`zoneInput_${z.id}`);
+      if (quickInput) {
+        quickInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            const code = quickInput.value.trim();
+            if (code) {
+              dispatchBarcodeBurst(code, {
+                zoneId: z.id,
+                scannerId: z.scanners[0],
+                hadExplicitZone: true
+              });
+              quickInput.value = '';
+            }
+          }
+        });
+      }
+    });
+
+    const btnSaveZones = document.getElementById('btnSaveZonesConfig');
+    if (btnSaveZones) {
+      btnSaveZones.addEventListener('click', () => {
+        const prefixes = {};
+        for (let id = 1; id <= 6; id++) {
+          prefixes[id] = document.getElementById(`cfgScanner${id}Prefix`)?.value || `S${id}`;
+        }
+        const duplicateScope = document.getElementById('cfgDuplicateScope')?.value || 'zone';
+        const autoRouteSimultaneous = document.getElementById('cfgAutoRouteNoPrefix')?.checked !== false;
+        this.saveConfig({ prefixes, duplicateScope, autoRouteSimultaneous });
+        showToast('Configuración de 3 Zonas y 6 Escáneres guardada correctamente.', 'success');
+      });
+    }
+
+    for (let id = 1; id <= 6; id++) {
+      const btnSerial = document.getElementById(`btnPairSerial_${id}`);
+      if (btnSerial) {
+        btnSerial.addEventListener('click', () => this.pairSerialScanner(id));
+      }
+    }
+
+    const btnSim = document.getElementById('btnTestSimultaneousScans');
+    if (btnSim) {
+      btnSim.addEventListener('click', () => this.runSimultaneousTest());
+    }
+  }
+};
+
+function dispatchBarcodeBurst(rawInput, baseOptions = {}) {
+  const tokens = MultiZoneScannerManager.parseBurst(rawInput);
+  if (tokens.length === 0) return;
+  tokens.forEach(tok => {
+    handleBarcodeScanned(tok.cleanCode, {
+      ...baseOptions,
+      _fromBurst: true,
+      _parsedToken: tok,
+      zoneId: baseOptions.zoneId || tok.zoneId || undefined,
+      scannerId: baseOptions.scannerId || tok.scannerId || undefined
+    });
+  });
+}
+
+// ==============================================================================
+// 3A. DRIVER DE CAPTURA PARA PISTOLA LECTORA DE CÓDIGOS DE BARRA USB
 // ==============================================================================
 class BarcodeScannerDriver {
   constructor(onScanCallback) {
@@ -717,14 +1287,16 @@ class BarcodeScannerDriver {
   }
 
   initGlobalListener() {
-    // Interceptor global de pulsaciones de teclado (emulación de pistola HID)
+    // Interceptor global de pulsaciones de teclado (emulación de pistolas HID)
     document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       const activeEl = document.activeElement;
-      const isTypingInInput = activeEl && 
+      const isTypingInInput = activeEl &&
         (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT') &&
         activeEl.id !== 'barcodeInput';
 
-      // Si el usuario está editando un formulario de empleado u otra cosa, no interceptar
+      // Si el usuario está editando un formulario o un input de zona dedicado, no interceptar
       if (isTypingInInput) return;
 
       const currentTime = Date.now();
@@ -749,7 +1321,7 @@ class BarcodeScannerDriver {
           document.getElementById('barcodeInput').value = '';
         }
       } else if (e.key.length === 1) {
-        // Carácter alfanumérico imprimible
+        // Carácter alfanumérico o separador de prefijo de zona
         this.buffer += e.key;
       }
     });
@@ -758,10 +1330,10 @@ class BarcodeScannerDriver {
     document.addEventListener('click', (e) => {
       if (AppState.activeTab === 'tab-scanner') {
         if (MobileCameraScanner.isMobile()) return; // En móvil no auto-enfocar para no forzar la cámara ni el teclado
-        const isModalOpen = document.querySelector('.modal-backdrop.open') || 
+        const isModalOpen = document.querySelector('.modal-backdrop.open') ||
                             (document.getElementById('duplicateAlertModal')?.style.display === 'flex') ||
                             (document.getElementById('mobileCameraModal')?.style.display === 'flex');
-        const isButton = e.target.closest('button, input, select, a');
+        const isButton = e.target.closest('button, input, select, a, .zone-card');
         if (!isModalOpen && !isButton) {
           const barcodeInput = document.getElementById('barcodeInput');
           if (barcodeInput) barcodeInput.focus();
@@ -771,10 +1343,13 @@ class BarcodeScannerDriver {
   }
 
   processBarcode(rawCode) {
-    // Normalizar código eliminando espacios
-    const cleanCode = rawCode.trim().toUpperCase();
+    const cleanCode = String(rawCode || '').trim().toUpperCase();
     if (!cleanCode) return;
-    this.onScan(cleanCode);
+    if (cleanCode.length > 7 || cleanCode.includes(' ') || cleanCode.includes('-') || cleanCode.includes(':')) {
+      dispatchBarcodeBurst(cleanCode);
+    } else {
+      this.onScan(cleanCode);
+    }
   }
 }
 
@@ -1416,10 +1991,10 @@ class DatabaseEngine {
     if (!badge) return;
     if (allSynced) {
       badge.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Sincronizado';
-      badge.style.color = '#38bdf8';
+      badge.style.color = 'var(--status-success)';
     } else {
       badge.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i> Encolado Localmente';
-      badge.style.color = '#f59e0b';
+      badge.style.color = 'var(--status-warning)';
     }
   }
 
@@ -1765,11 +2340,40 @@ function dismissDuplicateAlertModal() {
 //    Sin duplicados bloqueados en la jornada: respeta la Tolerancia Anti-Duplicado (Segundos)
 // ==============================================================================
 function handleBarcodeScanned(barcode, options = {}) {
+  if (!options._fromBurst && typeof MultiZoneScannerManager !== 'undefined') {
+    const burstTokens = MultiZoneScannerManager.parseBurst(barcode);
+    if (burstTokens.length > 1 || (burstTokens.length === 1 && burstTokens[0].zoneId && !options.zoneId)) {
+      burstTokens.forEach(tok => {
+        handleBarcodeScanned(tok.cleanCode, {
+          ...options,
+          _fromBurst: true,
+          _parsedToken: tok,
+          zoneId: options.zoneId || tok.zoneId,
+          scannerId: options.scannerId || tok.scannerId
+        });
+      });
+      return;
+    }
+  }
+
   const now = Date.now();
   const currentDate = new Date();
-  const cleanCode = String(barcode || '').trim().replace(/[^0-9a-zA-Z]/g, '');
-  const lastScanTime = AppState.lastScannedTimeByCode[cleanCode] || 0;
-  const timeDifferenceSec = (now - lastScanTime) / 1000;
+  const rawToken = options._parsedToken || null;
+  const cleanCode = String(rawToken ? rawToken.cleanCode : (barcode || '')).trim().replace(/[^0-9a-zA-Z]/g, '');
+  if (!cleanCode) return;
+
+  // Resolver Zona de Marcado (Zona 1/2/3), Escáner (1..6) y Clave Anti-Duplicado por Zona
+  const resolved = (typeof MultiZoneScannerManager !== 'undefined')
+    ? MultiZoneScannerManager.resolveZoneForScan(rawToken, cleanCode, now, options)
+    : {
+        zoneId: 'zona_1',
+        zoneName: APP_CONFIG.LINEA_EMPAQUE,
+        scannerId: 1,
+        deviceLabel: options.origenDispositivo || 'Pistola USB Inalámbrica',
+        hadExplicitZone: false,
+        autoRouted: false,
+        dedupScopeKey: `zona_1__${cleanCode}`
+      };
 
   // Si el modal de alerta previa estaba en pantalla, descartarlo
   dismissDuplicateAlertModal();
@@ -1777,12 +2381,19 @@ function handleBarcodeScanned(barcode, options = {}) {
   // 1. PARSEAR ESTRUCTURA OFICIAL VETE (7 DÍGITOS: [3d Calidad: 000, 002, 003][4d Personal])
   const parsed = parseVeteBarcode(cleanCode);
 
-  // 2. FILTRO ANTI-DUPLICADO POR TIEMPO (Debounce: respeta Tolerancia Anti-Duplicado en Segundos)
-  // El sistema permite leer el mismo código repetidamente para cada caja, protegiendo solo contra rebotes de pistola
-  if (!options.ignoreDuplicate && timeDifferenceSec < APP_CONFIG.TOLERANCIA_DUPLICADO_SEG) {
+  // 2. FILTRO ANTI-DUPLICADO INDEPENDIENTE POR ZONA / ESCÁNER
+  // Permite que el mismo código pase al mismo tiempo en Zonas diferentes, bloqueando solo rebotes en la misma Zona.
+  const dupInfo = (typeof MultiZoneScannerManager !== 'undefined')
+    ? MultiZoneScannerManager.isDuplicate(resolved.dedupScopeKey, now, APP_CONFIG.TOLERANCIA_DUPLICADO_SEG)
+    : { blocked: false, elapsedSec: 999, remainingSec: 0 };
+
+  if (!options.ignoreDuplicate && dupInfo.blocked) {
     AudioPlayer.playDuplicateAlertSound();
-    triggerHeroFlash('duplicate', cleanCode, `Caja duplicada (leída hace ${Math.round(timeDifferenceSec)}s)`, null, 0, 0, currentDate, parsed);
-    showToast(`⚠️ Tolerancia Anti-Duplicado (${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s): Espera ${Math.ceil(APP_CONFIG.TOLERANCIA_DUPLICADO_SEG - timeDifferenceSec)}s antes de leer otra caja con el mismo código ${cleanCode}.`, 'warning');
+    if (typeof MultiZoneScannerManager !== 'undefined') {
+      MultiZoneScannerManager.notifyZoneResult(resolved.zoneId, resolved.scannerId, 'duplicate');
+    }
+    triggerHeroFlash('duplicate', cleanCode, `Caja duplicada en ${resolved.zoneName} (leída hace ${Math.round(dupInfo.elapsedSec)}s)`, null, 0, 0, currentDate, parsed, resolved);
+    showToast(`⚠️ ${resolved.zoneName} (${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s): Espera ${dupInfo.remainingSec}s para repetir ${cleanCode} en esa zona.`, 'warning');
     return;
   }
 
@@ -1801,7 +2412,7 @@ function handleBarcodeScanned(barcode, options = {}) {
   // Fallback de búsqueda amplia si no coincide con los 4 dígitos
   if (!matchedEmployee) {
     matchedEmployee = AppState.employees.find(emp => 
-      barcode.toUpperCase().startsWith(String(emp.codigo_empleado).toUpperCase()) ||
+      cleanCode.toUpperCase().startsWith(String(emp.codigo_empleado).toUpperCase()) ||
       String(emp.codigo_empleado).toUpperCase().startsWith(parsed.empCode.toUpperCase())
     );
   }
@@ -1809,22 +2420,26 @@ function handleBarcodeScanned(barcode, options = {}) {
   // 5. CASO: EMPLEADO DESCONOCIDO
   if (!matchedEmployee) {
     AudioPlayer.playErrorBeep();
-    triggerHeroFlash('error', barcode, `Empleado "${parsed.empCode}" no registrado`, null, 0, 0, currentDate, parsed);
-    showToast(`❌ Empleado "${parsed.empCode}" no registrado (Código leído: ${barcode}). Registre al empacador en Personal.`, 'error');
+    triggerHeroFlash('error', cleanCode, `Empleado "${parsed.empCode}" no registrado (${resolved.zoneName})`, null, 0, 0, currentDate, parsed, resolved);
+    showToast(`❌ Empleado "${parsed.empCode}" no registrado en ${resolved.zoneName} (Código: ${cleanCode}).`, 'error');
     return;
   }
 
   // 6. CASO: EMPLEADO INACTIVO
   if (matchedEmployee.activo === false) {
     AudioPlayer.playErrorBeep();
-    triggerHeroFlash('error', barcode, `Empleado inactivo: ${matchedEmployee.nombre_completo}`, matchedEmployee, 0, 0, currentDate, parsed);
+    triggerHeroFlash('error', cleanCode, `Empleado inactivo: ${matchedEmployee.nombre_completo}`, matchedEmployee, 0, 0, currentDate, parsed, resolved);
     showToast(`⚠️ El empleado ${matchedEmployee.nombre_completo} está marcado como INACTIVO.`, 'warning');
     return;
   }
 
   // 7. REGISTRO EXITOSO: EMITIR BEEP POTENTE INMEDIATAMENTE (< 5ms)
   AudioPlayer.playSuccessBeep();
-  AppState.lastScannedTimeByCode[barcode] = now;
+  if (typeof MultiZoneScannerManager !== 'undefined') {
+    MultiZoneScannerManager.markScanned(resolved, cleanCode, now, { empName: matchedEmployee.nombre_completo });
+  } else {
+    AppState.lastScannedTimeByCode[resolved.dedupScopeKey] = now;
+  }
 
   // Calcular tarifa para este empleado
   const appliedRate = (matchedEmployee.tarifa_personalizada && matchedEmployee.tarifa_personalizada > 0)
@@ -1851,8 +2466,8 @@ function handleBarcodeScanned(barcode, options = {}) {
     fecha_hora: currentDate.toISOString(),
     fecha_dia: currentDate.toISOString().split('T')[0],
     turno: turno,
-    linea_empaque: APP_CONFIG.LINEA_EMPAQUE,
-    origen_dispositivo: options.origenDispositivo || 'Pistola USB Inalámbrica',
+    linea_empaque: resolved.zoneName,
+    origen_dispositivo: resolved.deviceLabel,
     numero_correlativo: ''
   };
 
@@ -1864,8 +2479,8 @@ function handleBarcodeScanned(barcode, options = {}) {
   const empTotalBoxes = empTodayScans.length;
   const empTotalEarnings = empTodayScans.reduce((sum, s) => sum + (parseFloat(s.tarifa_aplicada) || 0), 0);
 
-  // Actualizar Tarjeta Gigante del Operador con Animación y Desglose de 6 Dígitos
-  triggerHeroFlash('success', barcode, 'CAJA REGISTRADA CORRECTAMENTE', matchedEmployee, empTotalBoxes, empTotalEarnings, currentDate, parsed);
+  // Actualizar Tarjeta Gigante del Operador con Animación y Zona/Escáner
+  triggerHeroFlash('success', cleanCode, `CAJA REGISTRADA · ${resolved.zoneName.toUpperCase()}`, matchedEmployee, empTotalBoxes, empTotalEarnings, currentDate, parsed, resolved);
 
   // Actualizar todos los tableros y KPIs
   updateAllDashboardStats();
@@ -1928,7 +2543,7 @@ function getFormattedDateShort(date = new Date()) {
 }
 
 // Animación y Actualización de la Tarjeta Gigante de Última Caja (Con Desglose 8 Dígitos)
-function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 0, empEarnings = 0, dateObj = new Date(), parsed = null) {
+function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 0, empEarnings = 0, dateObj = new Date(), parsed = null, zoneMeta = null) {
   const heroCard = document.getElementById('lastScanHeroCard');
   const emptyState = document.getElementById('lastScanEmpty');
   const contentState = document.getElementById('lastScanContent');
@@ -1953,6 +2568,9 @@ function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 
 
   const timeStr = dateObj.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   heroTimestamp.innerText = timeStr;
+  const zoneBadgeHtml = zoneMeta && (zoneMeta.deviceLabel || zoneMeta.zoneName)
+    ? `<span class="ui-badge ui-badge-info"><i class="fa-solid fa-diagram-project"></i> ${escapeHtml(zoneMeta.deviceLabel || zoneMeta.zoneName)}</span>`
+    : '';
 
   if (status === 'success' && employee) {
     const formattedDate = getFormattedDateShort(dateObj);
@@ -1964,43 +2582,45 @@ function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 
     statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + message;
     heroEmpName.innerText = employee.nombre_completo;
     
-    // Desglose de 10 Dígitos: Empleado, Calidad, Envase y Correlativo Digital
+    // Desglose de 10 Dígitos: Empleado, Calidad, Envase y Zona
     heroCodeText.innerHTML = `
-      <span style="background:rgba(255,255,255,0.08); padding:0.15rem 0.45rem; border-radius:4px; font-weight:700;"><i class="fa-solid fa-user-tag"></i> Emp: <strong>${escapeHtml(p.empCode)}</strong></span>
-      <span style="background:rgba(56,189,248,0.18); color:#38bdf8; padding:0.15rem 0.45rem; border-radius:4px; font-weight:700;">
+      <span class="ui-badge ui-badge-neutral"><i class="fa-solid fa-user-tag"></i> Emp: <strong>${escapeHtml(p.empCode)}</strong></span>
+      <span class="ui-badge ui-badge-info">
         <i class="fa-solid fa-leaf"></i> Cal: <strong>${escapeHtml(p.qualityCode)}</strong> (${escapeHtml(p.calidadCorto)})
       </span>
-      <span style="background:rgba(250,204,21,0.18); color:#fde047; padding:0.15rem 0.45rem; border-radius:4px; font-weight:700;">
+      <span class="ui-badge ui-badge-warning">
         <i class="fa-solid fa-box"></i> Envase: <strong>${escapeHtml(p.tipoCajaNombre)}</strong>
       </span>
+      ${zoneBadgeHtml}
     `;
     
     heroDniText.innerText = employee.dni_rut ? `DNI: ${employee.dni_rut}` : '';
     
     // Frase requerida de alta visibilidad: Juan Carlos Mendoza 10 cajas - 22/08/26
     if (heroAccumText) {
-      heroAccumText.innerHTML = `<span style="color:var(--text-primary); font-weight:900; font-size:1.05rem;">${escapeHtml(employee.nombre_completo)}</span> <span style="background:var(--accent-primary); color:#ffffff; padding:0.15rem 0.5rem; border-radius:5px; font-weight:900; font-family:var(--font-mono); font-size:1rem;">${empBoxes} ${boxWord}</span> <span style="color:var(--text-secondary); font-weight:700; font-size:0.85rem;">- ${formattedDate}</span>`;
+      heroAccumText.innerHTML = `<span style="color:var(--text-primary); font-weight:700; font-size:1rem;">${escapeHtml(employee.nombre_completo)}</span> <span class="ui-badge ui-badge-violet" style="font-family:var(--font-mono); font-weight:700; font-size:0.9rem;">${empBoxes} ${boxWord}</span> <span style="color:var(--text-muted); font-weight:600; font-size:0.85rem;">- ${formattedDate}</span>`;
     }
 
     if (heroEmpBoxCount) heroEmpBoxCount.innerText = `${empBoxes}`;
     if (heroEmpDateShift) heroEmpDateShift.innerText = `${formattedDate}`;
     if (heroBarcodeRead) {
-      heroBarcodeRead.innerHTML = `<span style="font-family:var(--font-mono); font-weight:800; color:var(--accent-primary);">${escapeHtml(barcode)}</span>`;
+      heroBarcodeRead.innerHTML = `<span style="font-family:var(--font-mono); font-weight:700; color:var(--accent-primary);">${escapeHtml(barcode)}</span>`;
     }
   } else if (status === 'duplicate') {
     const p = parsed || parseVeteBarcode(barcode);
     heroCard.classList.add('error-flash');
     statusBadge.className = 'scan-status-badge duplicate';
     statusBadge.innerHTML = '<i class="fa-solid fa-clock"></i> ' + message;
-    heroEmpName.innerHTML = `<span style="color:#f97316; font-weight:900;">TOLERANCIA ANTI-DUPLICADO</span>`;
+    heroEmpName.innerHTML = `<span style="color:var(--status-warning); font-weight:700;">TOLERANCIA ANTI-DUPLICADO</span>`;
     heroCodeText.innerHTML = `
-      <span style="background:rgba(249,115,22,0.2); color:#fb923c; padding:0.2rem 0.6rem; border-radius:6px; font-weight:800; font-size:0.95rem; border:1px solid #f97316;">
-        <i class="fa-solid fa-hourglass-half"></i> Espera ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s entre lecturas consecutivas del mismo código
+      <span class="ui-badge ui-badge-warning">
+        <i class="fa-solid fa-hourglass-half"></i> Espera ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s entre lecturas consecutivas en esta zona
       </span>
+      ${zoneBadgeHtml}
     `;
     heroDniText.innerText = `Anti-rebote activo (${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG} segundos)`;
-    if (heroAccumText) heroAccumText.innerHTML = `<span style="color:#fb923c; font-weight:800;">⏱️ Escaneo muy rápido. Espera ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s para la próxima caja.</span>`;
-    if (heroBarcodeRead) heroBarcodeRead.innerHTML = `<span style="color:#fb923c; font-family:var(--font-mono); font-weight:800;">${escapeHtml(barcode)}</span>`;
+    if (heroAccumText) heroAccumText.innerHTML = `<span style="color:var(--status-warning); font-weight:600;">⏱️ Escaneo muy rápido. Otras zonas siguen libres para leer el mismo código.</span>`;
+    if (heroBarcodeRead) heroBarcodeRead.innerHTML = `<span style="color:var(--status-warning); font-family:var(--font-mono); font-weight:700;">${escapeHtml(barcode)}</span>`;
   } else {
     heroCard.classList.add('error-flash');
     statusBadge.className = 'scan-status-badge error';
@@ -2049,7 +2669,10 @@ function refreshHeroCardIfVisible(forceShow = false) {
     contentState.classList.add('visible');
   }
 
-  triggerHeroFlash('success', lastScan.codigo_barra_leido, 'CAJA REGISTRADA CORRECTAMENTE', displayEmp, empBoxes, empEarnings, scanDate, parsed);
+  triggerHeroFlash('success', lastScan.codigo_barra_leido, 'CAJA REGISTRADA CORRECTAMENTE', displayEmp, empBoxes, empEarnings, scanDate, parsed, {
+    zoneName: lastScan.linea_empaque || 'Zona 1',
+    deviceLabel: lastScan.origen_dispositivo || lastScan.linea_empaque || 'Zona 1'
+  });
 }
 
 // Renderizar el Acumulado de Cajas por Empleado Hoy (Números Gigantes de Alta Visibilidad, Sin Importes)
@@ -2115,9 +2738,9 @@ function renderEmployeeAccumulatedList() {
               ${isLeader ? '<span style="font-size:0.9rem;" title="Líder del turno">🥇</span>' : ''}
             </div>
             <div class="emp-accum-meta-sub">
-              <span style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;"><i class="fa-solid fa-barcode"></i> ${escapeHtml(emp.codigo_empleado)}</span>
+              <span style="font-family:var(--font-mono); font-weight:600; color:var(--accent-primary);"><i class="fa-solid fa-barcode"></i> ${escapeHtml(emp.codigo_empleado)}</span>
               <span>• ${emp.boxes} hoy</span>
-              ${hasHistorical ? `<span style="color:#a5f3fc; font-weight:700;">• ${emp.historicalBoxes} en total</span>` : ''}
+              ${hasHistorical ? `<span style="color:var(--status-success); font-weight:600;">• ${emp.historicalBoxes} en total</span>` : ''}
               ${emp.dni_rut ? `<span>• DNI: ${escapeHtml(emp.dni_rut)}</span>` : ''}
             </div>
           </div>
@@ -2157,9 +2780,11 @@ function renderLiveScansList() {
 
   const isShowingHistoricalNotice = (AppState.todayScans.length === 0 && AppState.recentScans.length > 0);
   const noticeHtml = isShowingHistoricalNotice ? `
-    <div style="padding:0.45rem 0.75rem; margin:0.4rem 0.5rem 0.6rem; border-radius:6px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.3); color:#bae6fd; font-size:0.75rem; display:flex; align-items:center; gap:0.45rem;">
-      <i class="fa-solid fa-clock-rotate-left" style="color:#38bdf8;"></i>
-      <span>Sin escaneos hoy. Mostrando últimos movimientos guardados en Supabase:</span>
+    <div class="ui-notice-banner" style="margin:0.6rem; padding:0.6rem 0.85rem;">
+      <div class="ui-notice-banner-text" style="font-size:0.78rem;">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span>Sin escaneos hoy. Mostrando últimos movimientos guardados en Supabase:</span>
+      </div>
     </div>
   ` : '';
 
@@ -2177,7 +2802,7 @@ function renderLiveScansList() {
       .toUpperCase();
 
     const isSegunda = scan.codigo_calidad === '02';
-    const calBadgeColor = isSegunda ? '#34d399' : '#38bdf8';
+    const calBadgeColor = isSegunda ? 'var(--status-success)' : 'var(--status-info)';
     const calLabel = isSegunda ? '2ª' : '1ª';
     const boxLabel = escapeHtml(scan.nombre_tipo_caja || (isSegunda ? 'Segunda' : 'Primera'));
 
@@ -2189,12 +2814,12 @@ function renderLiveScansList() {
             <div class="log-emp-name">${escapeHtml(scan.empleado_nombre_snapshot)}</div>
             <div class="log-emp-code">
               <i class="fa-solid fa-barcode"></i> ${escapeHtml(scan.codigo_barra_leido)} 
-              <span style="color:var(--text-muted); font-size:0.7rem;">(${scan.turno})</span>
+              <span style="color:var(--text-muted); font-size:0.7rem;">(${escapeHtml(scan.linea_empaque || 'Zona 1')} • ${scan.turno})</span>
             </div>
           </div>
         </div>
         <div class="log-meta-info">
-          <div class="log-price-badge" style="color:${calBadgeColor}; font-weight:800; font-size:0.75rem;"><i class="fa-solid fa-box"></i> ${calLabel}: ${boxLabel}</div>
+          <div class="log-price-badge" style="color:${calBadgeColor}; font-weight:600; font-size:0.75rem;"><i class="fa-solid fa-box"></i> ${calLabel}: ${boxLabel}</div>
           <div class="log-time" style="font-size:0.75rem;">${displayTimestamp}</div>
         </div>
       </div>
@@ -2243,12 +2868,22 @@ function updateAllDashboardStats() {
   setElementText('kpiTotalCajas', totalBoxes.toLocaleString('es-AR'));
   setElementText('kpiTotalHistorico', `(Histórico: ${(AppState.totalHistoricalScans || 0).toLocaleString('es-AR')})`);
   setElementText('kpiEmpacadoresActivos', activeCount);
-  setElementText('kpiRitmoHora', `${ritmoHora} <small style="font-size:0.7rem; font-weight:normal;">c/h</small>`);
-  setElementText('kpiLiderNombre', leaderBoxes > 0 ? `${escapeHtml(leaderName)} <small style="font-size:0.75rem; color:#fef08a; font-weight:700;">(${leaderBoxes})</small>` : '-');
+  setElementText('kpiRitmoHora', `${ritmoHora} <small>c/h</small>`);
+  setElementText('kpiLiderNombre', leaderBoxes > 0 ? `${escapeHtml(leaderName)} <small style="font-size:0.78rem; color:var(--accent-primary); font-weight:700;">(${leaderBoxes})</small>` : '-');
+
+  const navBadge = document.getElementById('navScannerBadge');
+  if (navBadge) {
+    navBadge.textContent = totalBoxes.toLocaleString('es-AR');
+  }
 
   // Actualizar listas de la pantalla principal
   renderEmployeeAccumulatedList();
   renderLiveScansList();
+
+  // Actualizar contadores en vivo de las 3 Zonas de Marcado
+  if (typeof MultiZoneScannerManager !== 'undefined') {
+    MultiZoneScannerManager.refreshZoneCounts();
+  }
 
   // Actualizar también ranking en la pestaña de Producción
   renderProductionRankings(empCounts, totalBoxes);
@@ -2310,8 +2945,8 @@ function renderExecutiveDashboard(totalBoxes, activeCount, ritmoHora, leaderName
   const q2El = document.getElementById('execQuality2Label');
   const qFill = document.getElementById('execQualityFill');
 
-  if (q1El) q1El.innerHTML = `<i class="fa-solid fa-medal" style="color:#38bdf8;"></i> Primera: <strong>${cal1Count}</strong> (${pct1}%)`;
-  if (q2El) q2El.innerHTML = `<i class="fa-solid fa-box-archive" style="color:#f59e0b;"></i> Estándar: <strong>${cal2Count}</strong> (${pct2}%)`;
+  if (q1El) q1El.innerHTML = `<i class="fa-solid fa-medal exec-q-icon-1"></i> Primera: <strong>${cal1Count}</strong> (${pct1}%)`;
+  if (q2El) q2El.innerHTML = `<i class="fa-solid fa-box-archive exec-q-icon-2"></i> Estándar: <strong>${cal2Count}</strong> (${pct2}%)`;
   if (qFill) qFill.style.width = `${pct1}%`;
 
   // 5. Lista de Acumulado por Empacador
@@ -2370,7 +3005,7 @@ function renderExecutiveDashboard(totalBoxes, activeCount, ritmoHora, leaderName
               ${isLeader ? '<span title="Líder del Turno" style="font-size:0.8rem;">🏆</span>' : ''}
             </div>
             <div class="exec-emp-meta-line">
-              <span style="font-family:var(--font-mono); font-weight:700; color:#38bdf8;"><i class="fa-solid fa-barcode"></i> ${escapeHtml(emp.codigo_empleado)}</span>
+              <span style="font-family:var(--font-mono); font-weight:600; color:var(--accent-primary);"><i class="fa-solid fa-barcode"></i> ${escapeHtml(emp.codigo_empleado)}</span>
               ${emp.dni_rut ? `<span>• DNI: ${escapeHtml(emp.dni_rut)}</span>` : ''}
               ${hasBoxes ? `<span>• ${percentage}% del total</span>` : ''}
             </div>
@@ -2419,12 +3054,12 @@ function renderProductionRankings(empCounts = {}, totalBoxes = 0) {
             <span style="font-size:1.1rem; width:28px;">${medalIcon}</span>
             <span>${escapeHtml(name)}</span>
           </div>
-          <div style="font-family:var(--font-mono); font-weight:800; font-size:1.1rem; color:#38bdf8;">
+          <div style="font-family:var(--font-mono); font-weight:700; font-size:1.05rem; color:var(--accent-primary);">
             ${count} <span style="font-size:0.8rem; color:var(--text-secondary); font-weight:normal;">cajas (${shareOfTotal}%)</span>
           </div>
         </div>
-        <div style="width:100%; height:8px; background-color:var(--bg-secondary); border-radius:4px; overflow:hidden;">
-          <div style="width:${percentage}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981); border-radius:4px; transition:width 0.5s ease;"></div>
+        <div style="width:100%; height:7px; background-color:var(--bg-secondary); border-radius:99px; overflow:hidden;">
+          <div style="width:${percentage}%; height:100%; background:var(--accent-primary); border-radius:99px; transition:width 0.5s ease;"></div>
         </div>
       </div>
     `;
@@ -3011,10 +3646,18 @@ function initSidebarController() {
   const btnMobile = document.getElementById('btnMobileToggle');
   const backdrop = document.getElementById('sidebarBackdrop');
 
+  const syncAriaExpanded = (compact) => {
+    if (btnCollapse) btnCollapse.setAttribute('aria-expanded', String(!compact));
+    if (btnExpand) btnExpand.setAttribute('aria-expanded', String(!compact));
+  };
+
   // Recuperar preferencia de barra compacta guardada en localStorage
   const isCompact = localStorage.getItem('magaretto_sidebar_compact') === 'true';
   if (isCompact && sidebar && window.innerWidth > 768) {
     sidebar.classList.add('compact');
+    syncAriaExpanded(true);
+  } else {
+    syncAriaExpanded(false);
   }
 
   // Contraer menú
@@ -3023,6 +3666,7 @@ function initSidebarController() {
       if (sidebar) {
         sidebar.classList.add('compact');
         localStorage.setItem('magaretto_sidebar_compact', 'true');
+        syncAriaExpanded(true);
       }
     });
   }
@@ -3033,6 +3677,7 @@ function initSidebarController() {
       if (sidebar) {
         sidebar.classList.remove('compact');
         localStorage.setItem('magaretto_sidebar_compact', 'false');
+        syncAriaExpanded(false);
       }
     });
   }
@@ -3063,14 +3708,14 @@ const ThemeManager = {
   init() {
     const btnToggle = document.getElementById('btnThemeToggle');
     const saved = localStorage.getItem(this.storageKey);
-    // Preferencia guardada o por defecto light (respetando la paleta institucional)
-    const initialTheme = (saved === 'dark') ? 'dark' : 'light';
+    // Preferencia guardada o por defecto dark (estilo Bento Telemetry)
+    const initialTheme = (saved === 'light') ? 'light' : 'dark';
     
     this.applyTheme(initialTheme);
 
     if (btnToggle) {
       btnToggle.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
         const newTheme = (currentTheme === 'dark') ? 'light' : 'dark';
         this.applyTheme(newTheme);
         showToast(newTheme === 'dark' ? 'Modo oscuro activado' : 'Modo claro activado', 'info');
@@ -3316,6 +3961,7 @@ const AuthManager = {
     const tabScannerBtn = document.querySelector('.nav-tab[data-tab="tab-scanner"]');
     const audioControls = document.querySelector('.audio-controls');
 
+    const currentCount = document.getElementById('navScannerBadge')?.textContent || '0';
     if (role === 'Ejecutivo') {
       if (operatorView) operatorView.style.display = 'none';
       if (execView) execView.style.display = 'flex';
@@ -3323,7 +3969,7 @@ const AuthManager = {
       if (audioControls) audioControls.style.display = 'none';
       if (tabScannerBtn) {
         tabScannerBtn.title = 'Monitoreo Ejecutivo';
-        tabScannerBtn.innerHTML = '<i class="fa-solid fa-chart-pie"></i> <span class="nav-tab-label">Monitoreo Ejecutivo</span>';
+        tabScannerBtn.innerHTML = `<span class="nav-tab-main"><i class="fa-solid fa-chart-pie"></i><span class="nav-tab-label">Monitoreo Ejecutivo</span></span><span class="nav-tab-side"><span class="nav-tab-badge" id="navScannerBadge">${escapeHtml(currentCount)}</span><kbd class="ui-kbd">⌘1</kbd></span>`;
       }
     } else {
       if (operatorView) operatorView.style.display = '';
@@ -3332,9 +3978,15 @@ const AuthManager = {
       if (audioControls) audioControls.style.display = '';
       if (tabScannerBtn) {
         tabScannerBtn.title = 'Estación Escáner';
-        tabScannerBtn.innerHTML = '<i class="fa-solid fa-barcode"></i> <span class="nav-tab-label">Estación Escáner</span>';
+        tabScannerBtn.innerHTML = `<span class="nav-tab-main"><i class="fa-solid fa-barcode"></i><span class="nav-tab-label">Estación Escáner</span></span><span class="nav-tab-side"><span class="nav-tab-badge" id="navScannerBadge">${escapeHtml(currentCount)}</span><kbd class="ui-kbd">⌘1</kbd></span>`;
       }
     }
+
+    // Ocultar grupos de la barra lateral que no tengan ítems visibles
+    document.querySelectorAll('.sidebar-group').forEach(group => {
+      const hasVisible = Array.from(group.querySelectorAll('.nav-tab')).some(t => t.style.display !== 'none');
+      group.style.display = hasVisible ? '' : 'none';
+    });
 
     // Si el rol actual no tiene acceso a la pestaña que estaba activa, llevar a Estación Escáner
     if (!currentTabAllowed) {
@@ -3495,6 +4147,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // 0C. Inicializar Selector de Tema Claro / Oscuro
   ThemeManager.init();
 
+  // 0D. Inicializar Paleta de Búsqueda Rápida (⌘K / Ctrl+K) y Atajos
+  SearchPaletteManager.init();
+
+  // 0E. Inicializar Gestor Multi-Zona (3 Zonas de Marcado x 2 Escáneres)
+  MultiZoneScannerManager.init();
+
   // 1. Inicializar Pestañas con switchTab
   document.querySelectorAll('.nav-tab').forEach(tabBtn => {
     tabBtn.addEventListener('click', () => {
@@ -3653,7 +4311,7 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       const code = barcodeInput.value.trim();
       if (code) {
-        handleBarcodeScanned(code);
+        dispatchBarcodeBurst(code);
         barcodeInput.value = '';
       }
     });
@@ -3714,6 +4372,7 @@ document.addEventListener('DOMContentLoaded', () => {
     manualForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const empSelectVal = document.getElementById('manualSelectEmployee').value;
+      const zoneIdVal = document.getElementById('manualSelectZone')?.value || MultiZoneScannerManager.config.activeZoneId || 'zona_1';
       const calVal = document.getElementById('manualSelectCalidad')?.value || '000';
       const count = parseInt(document.getElementById('manualBoxCount').value) || 1;
       const reason = document.getElementById('manualReason').value;
@@ -3724,6 +4383,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const zoneMeta = MultiZoneScannerManager.getZoneMeta(zoneIdVal) || MultiZoneScannerManager.ZONES[0];
       const empCode4 = String(emp.codigo_empleado || '').replace(/\D/g, '').padStart(4, '0').substring(0, 4);
       const reasonText = reason || 'Etiqueta ilegible / manual';
       for (let i = 0; i < count; i++) {
@@ -3731,13 +4391,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const manualBarcode = `${calVal}${empCode4}`;
         handleBarcodeScanned(manualBarcode, {
           isManual: true,
-          origenDispositivo: `Colocación Manual (${reasonText})`,
+          zoneId: zoneMeta.id,
+          scannerId: zoneMeta.scanners[0],
+          origenDispositivo: `Manual · ${zoneMeta.name} (${reasonText})`,
           ignoreDuplicate: true
         });
       }
 
       modalManual.classList.remove('open');
-      showToast(`Colocadas ${count} cajas manualmente para ${emp.nombre_completo}.`, 'success');
+      showToast(`Colocadas ${count} cajas manualmente en ${zoneMeta.name} para ${emp.nombre_completo}.`, 'success');
     });
   }
 
@@ -4328,13 +4990,13 @@ const DescarteManager = {
           <td style="font-family: var(--font-mono); color: var(--accent-primary); font-weight: 700;">${escapeHtml(item.codigo_empleado_extraido || '-')}</td>
           <td style="text-align: center; font-weight: 800; color: var(--text-primary);">1 cj</td>
           <td style="text-align: center;">
-            <span style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.75rem; font-weight: 800;">
+            <span class="ui-badge ui-badge-danger" style="font-weight:700;">
               <i class="fa-solid fa-trash-can"></i> DESCARTE
             </span>
           </td>
           <td style="font-size: 0.8rem; color: var(--text-secondary);">${escapeHtml(item.origen_dispositivo || 'Manual')}</td>
           <td style="text-align: center;">
-            <button type="button" class="btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #f87171;" onclick="DescarteManager.deleteWasteRecord('${item.id}')" title="Eliminar este registro">
+            <button type="button" class="btn-action-sm btn-delete-user" onclick="DescarteManager.deleteWasteRecord('${item.id}')" title="Eliminar este registro">
               <i class="fa-solid fa-trash"></i>
             </button>
           </td>
@@ -4380,6 +5042,7 @@ const DashboardManager = {
     qualities: ['000', '002', '003', 'DESCARTE'], // Todas por defecto
     boxTypes: ['Caja 10 kgs.', 'Caja 14 kgs.', 'Caja Araña', 'Descarte'], // Todos por defecto
     shift: 'todos',
+    zone: 'todas',
     employees: [], // Array de códigos de empacadores seleccionados
     allEmployeesSelected: true, // Flag booleano explícito
     query: ''
@@ -4464,6 +5127,15 @@ const DashboardManager = {
     if (shiftSelect) {
       shiftSelect.addEventListener('change', (e) => {
         this.filters.shift = e.target.value;
+        this.applyFiltersAndRender();
+      });
+    }
+
+    // 2B. Filtro por Zona de Marcado
+    const zoneSelect = document.getElementById('dashFilterZone');
+    if (zoneSelect) {
+      zoneSelect.addEventListener('change', (e) => {
+        this.filters.zone = e.target.value;
         this.applyFiltersAndRender();
       });
     }
@@ -4801,18 +5473,17 @@ const DashboardManager = {
     this.filters.qualities = ['000', '002', '003', 'DESCARTE'];
     this.filters.boxTypes = ['Caja 10 kgs.', 'Caja 14 kgs.', 'Caja Araña', 'Descarte'];
     this.filters.shift = 'todos';
+    this.filters.zone = 'todas';
     this.filters.allEmployeesSelected = true;
     this.filters.employees = this.getAllEmployees().map(e => e.codigo_empleado);
-    this.filters.query = '';
-    this.filters.boxTypes = ['Caja 10 kgs.', 'Caja 14 kgs.', 'Caja Araña', 'Descarte'];
-    this.filters.shift = 'todos';
-    this.filters.employees = [];
     this.filters.query = '';
 
     const pSel = document.getElementById('dashFilterPeriod');
     if (pSel) pSel.value = 'este_mes';
     const sSel = document.getElementById('dashFilterShift');
     if (sSel) sSel.value = 'todos';
+    const zSel = document.getElementById('dashFilterZone');
+    if (zSel) zSel.value = 'todas';
     const sIn = document.getElementById('dashSearchInput');
     if (sIn) sIn.value = '';
 
@@ -4974,6 +5645,16 @@ const DashboardManager = {
       });
     }
 
+    // 3B. Filtro por Zona de Marcado
+    if (this.filters.zone && this.filters.zone !== 'todas') {
+      const targetZone = this.filters.zone.toLowerCase();
+      list = list.filter(s => {
+        const linea = String(s.linea_empaque || '').toLowerCase();
+        const origen = String(s.origen_dispositivo || '').toLowerCase();
+        return linea.includes(targetZone) || origen.includes(targetZone);
+      });
+    }
+
     // 4. Filtro por Empacador (Multi-selección)
     if (!this.filters.allEmployeesSelected) {
       if (!this.filters.employees || this.filters.employees.length === 0) {
@@ -5014,12 +5695,12 @@ const DashboardManager = {
     if (noticeEl) {
       if (this.cachedScans.length === 0 && AppState.totalHistoricalScans > 0 && this.filters.period === 'hoy') {
         noticeEl.innerHTML = `
-          <div style="background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.3); border-radius:8px; padding:0.85rem 1.25rem; margin-bottom:1.25rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
-            <div style="display:flex; align-items:center; gap:0.65rem; color:#bae6fd; font-size:0.9rem;">
-              <i class="fa-solid fa-circle-info" style="color:#38bdf8; font-size:1.2rem;"></i>
+          <div class="ui-notice-banner">
+            <div class="ui-notice-banner-text">
+              <i class="fa-solid fa-circle-info"></i>
               <span>Hoy es una nueva jornada y aún no hay cajas escaneadas. Hay <strong>${AppState.totalHistoricalScans} cajas</strong> guardadas en la base de datos de este mes.</span>
             </div>
-            <button type="button" class="btn-primary" style="padding:0.4rem 0.85rem; font-size:0.85rem;" onclick="DashboardManager.switchToMonth()">
+            <button type="button" class="btn-primary btn-sm" onclick="DashboardManager.switchToMonth()">
               <i class="fa-solid fa-calendar-days"></i> Ver Mes Actual (${AppState.totalHistoricalScans} cajas)
             </button>
           </div>
@@ -5061,14 +5742,35 @@ const DashboardManager = {
     let segundaCount = 0;
     let aranaCount = 0;
     let descarteCount = 0;
+    let manualWasteCount = 0;
+    let totalCost = 0;
+    let totalKg = 0;
     const empCounts = new Map();
+
+    const empRateMap = new Map();
+    if (Array.isArray(AppState.employees)) {
+      AppState.employees.forEach(e => {
+        if (e && e.codigo_empleado) {
+          empRateMap.set(String(e.codigo_empleado), parseFloat(e.tarifa_personalizada) || APP_CONFIG.TARIFA_BASE);
+        }
+      });
+    }
 
     scans.forEach(s => {
       const calCode = String(s.codigo_calidad || '').trim();
       const calName = String(s.nombre_calidad || '').toLowerCase();
+      const boxName = String(s.nombre_tipo_caja || '').toLowerCase();
+      const originStr = String(s.origen_dispositivo || '').toLowerCase();
+      const empCode = s.codigo_empleado_extraido || extractEmpCodeFromRecord(s);
+      const empName = s.empleado_nombre_snapshot || 'Empacador ' + empCode;
 
-      if (calCode === 'DESCARTE' || calCode === 'DS' || calName.includes('descarte') || String(s.nombre_tipo_caja || '').toLowerCase().includes('descarte')) {
+      const isDescarte = (calCode === 'DESCARTE' || calCode === 'DS' || calName.includes('descarte') || boxName.includes('descarte'));
+
+      if (isDescarte) {
         descarteCount++;
+        if (originStr.includes('manual') || calCode === 'DS') {
+          manualWasteCount++;
+        }
       } else if (calCode === '003' || calCode === '03' || calName.includes('araña') || calName.includes('arana')) {
         aranaCount++;
       } else if (calCode === '002' || calCode === '02' || calName.includes('segunda')) {
@@ -5077,8 +5779,18 @@ const DashboardManager = {
         primeraCount++;
       }
 
-      const empCode = s.codigo_empleado_extraido || extractEmpCodeFromRecord(s);
-      const empName = s.empleado_nombre_snapshot || 'Empacador ' + empCode;
+      if (!isDescarte) {
+        const rate = parseFloat(s.tarifa_aplicada) || empRateMap.get(String(empCode)) || APP_CONFIG.TARIFA_BASE;
+        totalCost += rate;
+
+        let kg = 10;
+        if (boxName.includes('14')) kg = 14;
+        else if (boxName.includes('13')) kg = 13;
+        else if (boxName.includes('20')) kg = 20;
+        else if (boxName.includes('8')) kg = 8;
+        totalKg += kg;
+      }
+
       const key = `${empCode}__${empName}`;
       empCounts.set(key, (empCounts.get(key) || 0) + 1);
     });
@@ -5087,22 +5799,19 @@ const DashboardManager = {
     const segundaPct = total > 0 ? Math.round((segundaCount / total) * 100) : 0;
     const aranaPct = total > 0 ? Math.round((aranaCount / total) * 100) : 0;
     const descartePct = total > 0 ? Math.round((descarteCount / total) * 100) : 0;
+    const validPct = total > 0 ? Math.round(((total - descarteCount) / total) * 100) : 0;
     const activeEmps = empCounts.size;
     const avgBoxes = activeEmps > 0 ? Math.round(total / activeEmps) : 0;
 
     let boxesPerHour = 0;
-    if (total > 1) {
-      const timestamps = scans.map(s => new Date(s.fecha_hora).getTime()).filter(t => !isNaN(t));
-      if (timestamps.length > 1) {
-        const minT = Math.min(...timestamps);
-        const maxT = Math.max(...timestamps);
-        const hours = (maxT - minT) / (1000 * 60 * 60);
-        boxesPerHour = hours > 0.08 ? Math.round(total / hours) : Math.round(total * 8);
-      } else {
-        boxesPerHour = total;
-      }
-    } else if (total === 1) {
-      boxesPerHour = 12;
+    const timestamps = scans.map(s => new Date(s.fecha_hora).getTime()).filter(t => !isNaN(t));
+    if (total > 1 && timestamps.length > 1) {
+      const minT = Math.min(...timestamps);
+      const maxT = Math.max(...timestamps);
+      const hours = (maxT - minT) / (1000 * 60 * 60);
+      boxesPerHour = hours > 0.08 ? Math.round(total / hours) : Math.round(total * 8);
+    } else if (total > 0) {
+      boxesPerHour = total === 1 ? 12 : total;
     }
 
     let topName = '-';
@@ -5114,12 +5823,19 @@ const DashboardManager = {
       }
     });
 
+    const qualityScore = total > 0
+      ? ((primeraCount * 1.0 + segundaCount * 0.75 + aranaCount * 0.35) / total).toFixed(2)
+      : '0.00';
+    const exportShare = total > 0
+      ? ((primeraCount + segundaCount) / total).toFixed(2)
+      : '0.00';
+
     setElementText('dashKpiTotalBoxes', total.toLocaleString('es-AR'));
     setElementText('dashKpiPrimeraBoxes', primeraCount.toLocaleString('es-AR'));
     setElementText('dashKpiSegundaBoxes', segundaCount.toLocaleString('es-AR'));
     setElementText('dashKpiAranaBoxes', aranaCount.toLocaleString('es-AR'));
     setElementText('dashKpiDescarteBoxes', descarteCount.toLocaleString('es-AR'));
-    setElementText('dashKpiPrimeraPct', `${primeraPct}%`);
+    setElementText('dashKpiPrimeraPct', total > 0 ? `<i class="fa-solid fa-arrow-up"></i> ${primeraPct}%` : '0%');
     setElementText('dashKpiSegundaPct', `${segundaPct}%`);
     setElementText('dashKpiAranaPct', `${aranaPct}%`);
     setElementText('dashKpiDescartePct', `${descartePct}%`);
@@ -5128,20 +5844,149 @@ const DashboardManager = {
     setElementText('dashKpiBoxesPerHour', boxesPerHour.toLocaleString('es-AR'));
     setElementText('dashKpiTopPackerName', topBoxes > 0 ? escapeHtml(topName) : '-');
     setElementText('dashKpiTopPackerCount', topBoxes > 0 ? `${topBoxes.toLocaleString('es-AR')} cajas registradas` : '0 cajas registradas');
+
+    // Métricas Bento Telemetry adicionales
+    setElementText('dashBentoDeltaBoxes', `<i class="fa-solid fa-arrow-up"></i> ${validPct}% válidas`);
+    setElementText('dashBentoTotalCost', `$ ${Math.round(totalCost).toLocaleString('es-AR')}`);
+    setElementText('dashBentoTarifaTag', `$${Math.round(APP_CONFIG.TARIFA_BASE)} base`);
+    setElementText('dashBentoWasteManual', (manualWasteCount || descarteCount).toLocaleString('es-AR'));
+    setElementText('dashBentoQualityIndex', qualityScore);
+    setElementText('dashBentoFidelityVal', exportShare);
+    setElementText('dashBentoTopEmpTotal', total.toLocaleString('es-AR'));
+    setElementText('dashBentoTotalKg', totalKg.toLocaleString('es-AR'));
+
+    // Strip de 28 ticks operativos (Card 2)
+    const ticksEl = document.getElementById('dashUptimeTicks');
+    if (ticksEl) {
+      const slotCount = 28;
+      const slotTotals = new Array(slotCount).fill(0);
+      const slotWaste = new Array(slotCount).fill(0);
+      if (timestamps.length > 0) {
+        const minT = Math.min(...timestamps);
+        const maxT = Math.max(...timestamps);
+        const span = Math.max(maxT - minT, 1);
+        scans.forEach(s => {
+          const ts = new Date(s.fecha_hora).getTime();
+          if (isNaN(ts)) return;
+          const idx = Math.min(slotCount - 1, Math.floor(((ts - minT) / span) * slotCount));
+          slotTotals[idx]++;
+          const c = String(s.codigo_calidad || '').trim();
+          const n = String(s.nombre_calidad || '').toLowerCase();
+          if (c === 'DESCARTE' || c === 'DS' || n.includes('descarte')) slotWaste[idx]++;
+        });
+      }
+      const maxSlot = Math.max(...slotTotals, 1);
+      ticksEl.innerHTML = slotTotals.map((cnt, idx) => {
+        let cls = 'bento-tick';
+        if (cnt > 0) {
+          const isAnomaly = (slotWaste[idx] > 0 && slotWaste[idx] >= cnt * 0.25) || (cnt >= maxSlot * 0.9 && total > 5);
+          cls += isAnomaly ? ' amber' : ' active';
+        }
+        return `<span class="${cls}" title="Tramo ${idx + 1}: ${cnt} cajas"></span>`;
+      }).join('');
+    }
+
+    // Sparkline de 12 barras redondeadas (Card 3)
+    const sparkEl = document.getElementById('dashCostSparkline');
+    if (sparkEl) {
+      const bars = new Array(12).fill(0);
+      if (timestamps.length > 0) {
+        const minT = Math.min(...timestamps);
+        const maxT = Math.max(...timestamps);
+        const span = Math.max(maxT - minT, 1);
+        scans.forEach(s => {
+          const ts = new Date(s.fecha_hora).getTime();
+          if (isNaN(ts)) return;
+          const idx = Math.min(11, Math.floor(((ts - minT) / span) * 12));
+          bars[idx]++;
+        });
+      }
+      const maxBar = Math.max(...bars, 1);
+      sparkEl.innerHTML = bars.map((val, idx) => {
+        const h = total > 0 ? Math.max(26, Math.round((val / maxBar) * 100)) : (30 + ((idx * 11) % 36));
+        const curCls = idx === 11 ? ' current' : '';
+        return `<div class="bento-pill-bar${curCls}" style="height: ${h}%;" title="${val} cajas en segmento ${idx + 1}"></div>`;
+      }).join('');
+    }
+
+    // Trazas Recientes en Vivo (Card 5)
+    const tracesEl = document.getElementById('dashBentoRecentTraces');
+    if (tracesEl) {
+      const recent = scans.slice(0, 3);
+      if (recent.length === 0) {
+        tracesEl.innerHTML = `<div class="bento-empty-mini">Sin actividad registrada en este período.</div>`;
+      } else {
+        const maxEmp = Math.max(topBoxes, 1);
+        tracesEl.innerHTML = recent.map((s, idx) => {
+          const rawCode = String(s.codigo_barra_leido || '000000');
+          const shortCode = rawCode.length > 8 ? `pk_${rawCode.slice(-6)}` : `pk_${rawCode}`;
+          const empCode = s.codigo_empleado_extraido || extractEmpCodeFromRecord(s);
+          const empName = s.empleado_nombre_snapshot || `Emp. ${empCode}`;
+          const empTotal = empCounts.get(`${empCode}__${empName}`) || 1;
+          const barPct = Math.max(16, Math.min(100, Math.round((empTotal / maxEmp) * 100)));
+          const calCode = String(s.codigo_calidad || '').trim();
+          const calName = String(s.nombre_calidad || '').toLowerCase();
+          const isWaste = calCode === 'DESCARTE' || calCode === 'DS' || calName.includes('descarte');
+          const dotCls = isWaste ? 'red' : 'green';
+          const dt = new Date(s.fecha_hora || Date.now());
+          const timeStr = isNaN(dt.getTime()) ? '--:--' : dt.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+          return `
+            <div class="bento-trace-row${idx === 0 ? ' is-first' : ''}">
+              <span class="bento-dot ${dotCls}"></span>
+              <span class="bento-trace-code">${escapeHtml(shortCode)}</span>
+              <span class="bento-trace-name">${escapeHtml(empName)}</span>
+              <div class="bento-slim-track">
+                <div class="bento-slim-fill${idx === 0 ? ' lead' : ''}" style="width: ${barPct}%;"></div>
+              </div>
+              <span class="bento-trace-time">${timeStr}</span>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // Top Empacadores en Barras Horizontales (Card 7)
+    const packerBarsEl = document.getElementById('dashBentoPackerBars');
+    if (packerBarsEl) {
+      const sortedTop = Array.from(empCounts.entries())
+        .map(([k, count]) => ({ name: k.split('__')[1] || k, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 4);
+
+      if (sortedTop.length === 0) {
+        packerBarsEl.innerHTML = `<div class="bento-empty-mini">Sin empacadores con picking en este rango.</div>`;
+      } else {
+        const leaderCount = Math.max(sortedTop[0].count, 1);
+        packerBarsEl.innerHTML = sortedTop.map((emp, idx) => {
+          const pctW = Math.max(8, Math.round((emp.count / leaderCount) * 100));
+          return `
+            <div class="bento-packer-row${idx === 0 ? ' is-first' : ''}">
+              <span class="bento-packer-name">${escapeHtml(emp.name)}</span>
+              <div class="bento-slim-track">
+                <div class="bento-slim-fill${idx === 0 ? ' lead' : ''}" style="width: ${pctW}%;"></div>
+              </div>
+              <span class="bento-packer-count">${emp.count.toLocaleString('es-AR')}</span>
+            </div>
+          `;
+        }).join('');
+      }
+    }
   },
 
   renderQualityEnvaseMatrix(scans) {
     const container = document.getElementById('dashMatrixContainer');
+    const segBar = document.getElementById('dashBentoSegmentedBar');
     if (!container) return;
 
     const total = scans.length;
     const combos = [
-      { key: 'primera_10kg', calidad: 'Primera (000)', envase: 'Caja 10 kgs.', tag: 'primera' },
-      { key: 'primera_14kg', calidad: 'Primera (000)', envase: 'Caja 14 kgs.', tag: 'primera' },
-      { key: 'segunda_10kg', calidad: 'Segunda (002)', envase: 'Caja 10 kgs.', tag: 'segunda' },
-      { key: 'segunda_14kg', calidad: 'Segunda (002)', envase: 'Caja 14 kgs.', tag: 'segunda' },
-      { key: 'arana_caja', calidad: 'Araña (003)', envase: 'Caja Araña', tag: 'arana' },
-      { key: 'descarte_manual', calidad: 'Descarte', envase: 'Registro Manual', tag: 'descarte' }
+      { key: 'primera_10kg', label: '1ª · Caja 10 kg', dot: 'blue', color: '#60A5FA' },
+      { key: 'primera_14kg', label: '1ª · Caja 14 kg', dot: 'cobalt', color: '#3B82F6' },
+      { key: 'segunda_10kg', label: '2ª · Caja 10 kg', dot: 'muted', color: '#52525B' },
+      { key: 'segunda_14kg', label: '2ª · Caja 14 kg', dot: 'muted', color: '#3F3F46' },
+      { key: 'arana_caja', label: 'Araña (03)', dot: 'dim', color: '#27272A' },
+      { key: 'descarte_manual', label: 'Descarte', dot: 'dim', color: '#1F2937' }
     ];
 
     const counts = {};
@@ -5165,28 +6010,39 @@ const DashboardManager = {
       }
     });
 
-    container.innerHTML = combos.map(c => {
-      const cnt = counts[c.key] || 0;
-      const pct = total > 0 ? Math.round((cnt / total) * 100) : 0;
-      let colorPill = 'cyan';
-      if (c.tag === 'segunda') colorPill = 'green';
-      else if (c.tag === 'arana') colorPill = 'violet';
-      else if (c.tag === 'descarte') colorPill = 'orange';
+    const ranked = combos
+      .map(c => ({ ...c, count: counts[c.key] || 0 }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
 
+    const paletteDots = ['blue', 'cobalt', 'muted', 'dim'];
+    const paletteHex = ['#60A5FA', '#3B82F6', '#52525B', '#27272A'];
+
+    container.innerHTML = ranked.map((c, idx) => {
+      const pct = total > 0 ? Math.round((c.count / total) * 100) : 0;
       return `
-        <div class="dash-matrix-item">
-          <div class="dash-matrix-item-top">
-            <span class="dash-matrix-tag ${c.tag}">${c.calidad}</span>
-            <span class="dash-pill-pct ${colorPill}">${pct}%</span>
-          </div>
-          <div class="dash-matrix-name">${c.envase}</div>
-          <div class="dash-matrix-count">${cnt.toLocaleString('es-AR')}</div>
-          <div class="dash-matrix-bar-wrap">
-            <div class="dash-matrix-bar-fill ${c.tag}" style="width: ${pct}%;"></div>
-          </div>
+        <div class="bento-bd-item${idx === 0 ? ' is-first' : ''}" title="${c.count} cajas (${pct}%)">
+          <span class="bento-bd-left">
+            <span class="bento-dot ${paletteDots[idx]}"></span>
+            <span>${c.label}</span>
+          </span>
+          <span class="bento-bd-pct">${pct}%</span>
         </div>
       `;
     }).join('');
+
+    if (segBar) {
+      if (total === 0) {
+        segBar.innerHTML = `<div class="bento-seg-piece" style="width: 100%; background: #27272A;"></div>`;
+      } else {
+        segBar.innerHTML = ranked.map((c, idx) => {
+          const pct = Math.max(c.count > 0 ? 3 : 0, (c.count / total) * 100);
+          return pct > 0
+            ? `<div class="bento-seg-piece" style="width: ${pct.toFixed(1)}%; background: ${paletteHex[idx]};" title="${c.label}: ${c.count} cajas"></div>`
+            : '';
+        }).join('');
+      }
+    }
   },
 
   renderShiftDistribution(scans) {
@@ -5210,47 +6066,9 @@ const DashboardManager = {
     const pctN = total > 0 ? Math.round((noche / total) * 100) : 0;
 
     container.innerHTML = `
-      <div class="dash-shift-item">
-        <div class="dash-shift-left">
-          <div class="dash-shift-icon manana"><i class="fa-solid fa-sun"></i></div>
-          <div>
-            <div class="dash-shift-name">Turno Mañana</div>
-            <div class="dash-shift-sub">06:00 a 14:00 hs</div>
-          </div>
-        </div>
-        <div class="dash-shift-right">
-          <div class="dash-shift-val">${manana.toLocaleString('es-AR')}</div>
-          <div class="dash-shift-pct">${pctM}%</div>
-        </div>
-      </div>
-
-      <div class="dash-shift-item">
-        <div class="dash-shift-left">
-          <div class="dash-shift-icon tarde"><i class="fa-solid fa-cloud-sun"></i></div>
-          <div>
-            <div class="dash-shift-name">Turno Tarde</div>
-            <div class="dash-shift-sub">14:00 a 22:00 hs</div>
-          </div>
-        </div>
-        <div class="dash-shift-right">
-          <div class="dash-shift-val">${tarde.toLocaleString('es-AR')}</div>
-          <div class="dash-shift-pct">${pctT}%</div>
-        </div>
-      </div>
-
-      <div class="dash-shift-item">
-        <div class="dash-shift-left">
-          <div class="dash-shift-icon noche"><i class="fa-solid fa-moon"></i></div>
-          <div>
-            <div class="dash-shift-name">Turno Noche</div>
-            <div class="dash-shift-sub">22:00 a 06:00 hs</div>
-          </div>
-        </div>
-        <div class="dash-shift-right">
-          <div class="dash-shift-val">${noche.toLocaleString('es-AR')}</div>
-          <div class="dash-shift-pct">${pctN}%</div>
-        </div>
-      </div>
+      <span class="bento-shift-chip">Mañana <strong>${manana.toLocaleString('es-AR')}</strong> (${pctM}%)</span>
+      <span class="bento-shift-chip">Tarde <strong>${tarde.toLocaleString('es-AR')}</strong> (${pctT}%)</span>
+      <span class="bento-shift-chip">Noche <strong>${noche.toLocaleString('es-AR')}</strong> (${pctN}%)</span>
     `;
   },
 
@@ -5258,41 +6076,90 @@ const DashboardManager = {
     const chart = document.getElementById('dashHourlyChart');
     if (!chart) return;
 
-    const hours = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
-    const hourCounts = {};
-    hours.forEach(h => { hourCounts[h] = 0; });
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const timestamps = scans.map(s => new Date(s.fecha_hora).getTime()).filter(t => !isNaN(t));
+    const anchorDate = timestamps.length > 0 ? new Date(Math.max(...timestamps)) : new Date();
+    const todayDate = new Date();
+    const anchorDayStart = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate());
+    const todayDayStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
+
+    const rows = [];
+    const keyToRowIdx = new Map();
+    for (let offset = 4; offset >= 0; offset--) {
+      const d = new Date(anchorDayStart);
+      d.setDate(anchorDayStart.getDate() - offset);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const key = `${y}-${m}-${dayNum}`;
+      const isActualToday = d.getTime() === todayDayStart.getTime();
+      const label = (offset === 0 && isActualToday) ? 'Hoy' : (offset === 0 ? `${dayNum}/${m}` : dayNames[d.getDay()]);
+      keyToRowIdx.set(key, rows.length);
+      rows.push({
+        label,
+        isLast: offset === 0,
+        isActualToday,
+        hours: new Array(24).fill(0)
+      });
+    }
 
     scans.forEach(s => {
-      const d = new Date(s.fecha_hora || Date.now());
-      const h = d.getHours();
-      if (hourCounts[h] !== undefined) {
-        hourCounts[h]++;
+      const d = new Date(s.fecha_hora);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const rIdx = keyToRowIdx.get(key);
+      if (rIdx !== undefined) {
+        const h = d.getHours();
+        if (h >= 0 && h < 24) rows[rIdx].hours[h]++;
       }
     });
 
-    let maxVal = Math.max(...Object.values(hourCounts), 1);
+    let maxCell = 1;
+    rows.forEach(r => {
+      r.hours.forEach(c => { if (c > maxCell) maxCell = c; });
+    });
+    const currentHour = todayDate.getHours();
 
-    chart.innerHTML = hours.map(h => {
-      const cnt = hourCounts[h];
-      const pctHeight = Math.max(Math.round((cnt / maxVal) * 100), 5);
-      const label = `${String(h).padStart(2, '0')}:00`;
+    const rowsHtml = rows.map(row => {
+      const cellsHtml = row.hours.map((cnt, h) => {
+        let lvl = 'lvl-0';
+        if (cnt > 0) {
+          const ratio = cnt / maxCell;
+          if (ratio > 0.78) lvl = 'lvl-4';
+          else if (ratio > 0.50) lvl = 'lvl-3';
+          else if (ratio > 0.22) lvl = 'lvl-2';
+          else lvl = 'lvl-1';
+        } else if (row.isActualToday && h > currentHour) {
+          lvl = 'lvl-future';
+        }
+        return `<div class="bento-hm-cell ${lvl}" title="${row.label} ${String(h).padStart(2, '0')}:00 · ${cnt} cajas"></div>`;
+      }).join('');
 
       return `
-        <div class="dash-hourly-col">
-          <div class="dash-hourly-bar-container">
-            <div class="dash-hourly-bar" style="height: ${cnt > 0 ? pctHeight : 4}%;">
-              <div class="dash-hourly-tooltip">${cnt} cajas</div>
-            </div>
-          </div>
-          <span class="dash-hourly-label">${label}</span>
+        <div class="bento-hm-row${row.isLast ? ' is-today' : ''}">
+          <span class="bento-hm-day">${row.label}</span>
+          ${cellsHtml}
         </div>
       `;
     }).join('');
+
+    const axisHtml = `
+      <div class="bento-hm-axis">
+        <span></span>
+        <span class="bento-hm-tick-lbl" style="grid-column: 2 / span 4;">0:00</span>
+        <span class="bento-hm-tick-lbl" style="grid-column: 8 / span 4;">6:00</span>
+        <span class="bento-hm-tick-lbl" style="grid-column: 14 / span 4;">12:00</span>
+        <span class="bento-hm-tick-lbl" style="grid-column: 20 / span 4;">18:00</span>
+      </div>
+    `;
+
+    chart.innerHTML = `<div class="bento-hm-grid">${rowsHtml}${axisHtml}</div>`;
   },
 
   renderEmployeeTable(scans) {
     const tbody = document.getElementById('dashEmployeesTableBody');
     const badge = document.getElementById('dashEmployeeTableCountBadge');
+    const tableSub = document.getElementById('dashTableEmpSubtitle');
     if (!tbody) return;
 
     const totalPlantBoxes = scans.length;
@@ -5339,8 +6206,12 @@ const DashboardManager = {
     const sortedEmps = Array.from(empMap.values()).sort((a, b) => b.total - a.total);
 
     if (badge) {
-      const word = sortedEmps.length === 1 ? 'empacador con actividad' : 'empacadores con actividad';
+      const word = sortedEmps.length === 1 ? 'empacador' : 'empacadores';
       badge.innerText = `${sortedEmps.length} ${word}`;
+    }
+    if (tableSub) {
+      const word = sortedEmps.length === 1 ? 'empacador activo' : 'empacadores activos';
+      tableSub.innerText = `${sortedEmps.length} ${word}`;
     }
 
     if (sortedEmps.length === 0) {
@@ -5387,16 +6258,16 @@ const DashboardManager = {
             </div>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:#EFF6FF; color:#2563EB; font-weight:800; font-family:var(--font-mono);">${emp.primera}</span>
+            <span class="ui-badge ui-badge-info" style="font-weight:700; font-family:var(--font-mono);">${emp.primera}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:#ECFDF5; color:#059669; font-weight:800; font-family:var(--font-mono);">${emp.segunda}</span>
+            <span class="ui-badge ui-badge-success" style="font-weight:700; font-family:var(--font-mono);">${emp.segunda}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:var(--accent-light); color:var(--accent-primary); font-weight:800; font-family:var(--font-mono);">${emp.arana}</span>
+            <span class="ui-badge ui-badge-violet" style="font-weight:700; font-family:var(--font-mono);">${emp.arana}</span>
           </td>
           <td style="text-align:center;">
-            <span class="badge" style="background:#FEF2F2; color:#DC2626; font-weight:800; font-family:var(--font-mono);">${emp.descarte}</span>
+            <span class="ui-badge ui-badge-danger" style="font-weight:700; font-family:var(--font-mono);">${emp.descarte}</span>
           </td>
           <td>${envasePills}</td>
           <td style="text-align:center; font-weight:800; font-family:var(--font-mono); color:var(--accent-primary);">
@@ -5778,3 +6649,313 @@ function showToast(message, type = 'info') {
     setTimeout(() => toast.remove(), 300);
   }, 4000);
 }
+
+// ==============================================================================
+// 14. PALETA DE BÚSQUEDA RÁPIDA (⌘K / Ctrl+K) Y ATAJOS DE TECLADO
+// ==============================================================================
+const SearchPaletteManager = {
+  isOpen: false,
+  activeIndex: 0,
+  filteredEntries: [],
+  previousFocus: null,
+
+  fold(text) {
+    return String(text || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  },
+
+  isAuthLocked() {
+    const overlay = document.getElementById('authLoginOverlay');
+    return Boolean(overlay && !overlay.classList.contains('hidden'));
+  },
+
+  init() {
+    const btnSidebar = document.getElementById('btnSidebarSearch');
+    const btnTopbar = document.getElementById('btnTopbarSearch');
+    const btnClose = document.getElementById('btnCloseSearchPalette');
+    const scrim = document.getElementById('searchPaletteScrim');
+    const escBadge = document.querySelector('.search-palette-esc');
+    const input = document.getElementById('searchPaletteInput');
+
+    if (btnSidebar) btnSidebar.addEventListener('click', () => this.open());
+    if (btnTopbar) btnTopbar.addEventListener('click', () => this.open());
+    if (btnClose) btnClose.addEventListener('click', () => this.close());
+    if (scrim) scrim.addEventListener('click', () => this.close());
+    if (escBadge) escBadge.addEventListener('click', () => this.close());
+
+    if (input) {
+      input.addEventListener('input', () => {
+        this.activeIndex = 0;
+        this.render();
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!this.filteredEntries.length) return;
+          const delta = e.key === 'ArrowDown' ? 1 : -1;
+          this.activeIndex = (this.activeIndex + delta + this.filteredEntries.length) % this.filteredEntries.length;
+          this.renderSelectionOnly();
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          const chosen = this.filteredEntries[this.activeIndex];
+          if (chosen) this.execute(chosen);
+        }
+      });
+    }
+
+    const TAB_SHORTCUTS = {
+      '1': 'tab-scanner',
+      '2': 'tab-waste',
+      '3': 'tab-dashboard',
+      '4': 'tab-production',
+      '5': 'tab-employees',
+      '6': 'tab-payroll',
+      '7': 'tab-users',
+      ',': 'tab-settings'
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen) {
+        e.preventDefault();
+        this.close();
+        return;
+      }
+
+      if (this.isAuthLocked()) return;
+      if (e.defaultPrevented || e.repeat || e.isComposing || e.altKey || !(e.metaKey || e.ctrlKey)) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'k') {
+        e.preventDefault();
+        if (this.isOpen) this.close();
+        else this.open();
+        return;
+      }
+
+      const targetTab = TAB_SHORTCUTS[key];
+      if (targetTab) {
+        const tabBtn = document.querySelector(`.nav-tab[data-tab="${targetTab}"]`);
+        if (tabBtn && tabBtn.style.display !== 'none') {
+          e.preventDefault();
+          if (this.isOpen) this.close();
+          switchTab(targetTab);
+        }
+      }
+    });
+  },
+
+  open() {
+    if (this.isAuthLocked()) return;
+    const modal = document.getElementById('searchPaletteModal');
+    const input = document.getElementById('searchPaletteInput');
+    if (!modal || !input) return;
+
+    this.previousFocus = document.activeElement;
+    this.isOpen = true;
+    this.activeIndex = 0;
+    input.value = '';
+    modal.style.display = 'block';
+    this.render();
+    setTimeout(() => input.focus({ preventScroll: true }), 10);
+  },
+
+  close() {
+    const modal = document.getElementById('searchPaletteModal');
+    const input = document.getElementById('searchPaletteInput');
+    if (!modal) return;
+
+    this.isOpen = false;
+    modal.style.display = 'none';
+    if (input) input.value = '';
+
+    if (this.previousFocus && this.previousFocus.isConnected && typeof this.previousFocus.focus === 'function') {
+      this.previousFocus.focus({ preventScroll: true });
+    } else if (AppState.activeTab === 'tab-scanner' && !MobileCameraScanner.isMobile()) {
+      document.getElementById('barcodeInput')?.focus({ preventScroll: true });
+    }
+    this.previousFocus = null;
+  },
+
+  buildEntries() {
+    const entries = [];
+    const role = AppState.currentUser?.rol || 'Usuario';
+
+    // 1. Secciones visibles para el rol actual
+    document.querySelectorAll('.nav-tab[data-tab]').forEach(btn => {
+      if (btn.style.display === 'none') return;
+      const tabId = btn.dataset.tab;
+      const label = btn.querySelector('.nav-tab-label')?.textContent?.trim() || btn.title || tabId;
+      const iconClass = btn.querySelector('i')?.className || 'fa-solid fa-layer-group';
+      const kbd = btn.querySelector('.ui-kbd')?.textContent?.trim();
+      entries.push({
+        title: label,
+        meta: kbd ? `Sección · ${kbd}` : 'Sección',
+        icon: iconClass,
+        action: () => switchTab(tabId)
+      });
+    });
+
+    // 2. Acciones rápidas
+    const scannerBtn = document.querySelector('.nav-tab[data-tab="tab-scanner"]');
+    if (scannerBtn && scannerBtn.style.display !== 'none' && role !== 'Ejecutivo') {
+      entries.push({
+        title: 'Colocar caja manualmente',
+        meta: 'Acción rápida',
+        icon: 'fa-solid fa-hand',
+        action: () => {
+          switchTab('tab-scanner');
+          populateEmployeeSelects();
+          document.getElementById('modalManualScan')?.classList.add('open');
+        }
+      });
+    }
+
+    entries.push({
+      title: 'Cambiar tema Claro / Oscuro',
+      meta: 'Apariencia',
+      icon: 'fa-solid fa-circle-half-stroke',
+      action: () => document.getElementById('btnThemeToggle')?.click()
+    });
+
+    entries.push({
+      title: 'Probar sonido Beep',
+      meta: 'Audio',
+      icon: 'fa-solid fa-volume-high',
+      action: () => {
+        AudioPlayer.playSuccessBeep();
+        showToast('🔊 Sonido de lectura correcto (1200Hz)', 'success');
+      }
+    });
+
+    const dashBtn = document.querySelector('.nav-tab[data-tab="tab-dashboard"]');
+    if (dashBtn && dashBtn.style.display !== 'none') {
+      entries.push({
+        title: 'Exportar Excel del Tablero',
+        meta: 'Reporte',
+        icon: 'fa-solid fa-file-excel',
+        action: () => DashboardManager.exportExcel()
+      });
+    }
+
+    const empBtn = document.querySelector('.nav-tab[data-tab="tab-employees"]');
+    const canViewEmployees = Boolean(empBtn && empBtn.style.display !== 'none');
+    if (canViewEmployees) {
+      entries.push({
+        title: 'Nuevo Empacador',
+        meta: 'Personal',
+        icon: 'fa-solid fa-user-plus',
+        action: () => {
+          switchTab('tab-employees');
+          openEditEmployeeModal(null);
+        }
+      });
+    }
+
+    // 3. Empacadores activos
+    (AppState.employees || []).forEach(emp => {
+      if (emp.activo === false) return;
+      entries.push({
+        title: `${emp.nombre_completo} (${emp.codigo_empleado})`,
+        meta: 'Empacador',
+        icon: 'fa-solid fa-user',
+        isEmployee: true,
+        action: () => {
+          if (canViewEmployees) {
+            switchTab('tab-employees');
+            const empSearch = document.getElementById('employeeSearchInput');
+            if (empSearch) {
+              empSearch.value = emp.codigo_empleado || emp.nombre_completo || '';
+              renderEmployeesTable();
+            }
+          } else {
+            switchTab('tab-dashboard');
+            const dashSearch = document.getElementById('dashSearchInput');
+            if (dashSearch) {
+              dashSearch.value = emp.codigo_empleado || '';
+              DashboardManager.filters.query = (emp.codigo_empleado || '').toLowerCase();
+              DashboardManager.applyFiltersAndRender();
+            }
+          }
+        }
+      });
+    });
+
+    return entries;
+  },
+
+  render() {
+    const list = document.getElementById('searchPaletteResults');
+    const input = document.getElementById('searchPaletteInput');
+    if (!list || !input) return;
+
+    const q = this.fold(input.value.trim());
+    const all = this.buildEntries();
+
+    if (!q) {
+      this.filteredEntries = all.filter(e => !e.isEmployee).slice(0, 12);
+    } else {
+      this.filteredEntries = all
+        .filter(e => this.fold(e.title).includes(q) || this.fold(e.meta).includes(q))
+        .slice(0, 20);
+    }
+
+    if (this.activeIndex >= this.filteredEntries.length) {
+      this.activeIndex = Math.max(0, this.filteredEntries.length - 1);
+    }
+
+    if (this.filteredEntries.length === 0) {
+      list.innerHTML = `<div class="search-palette-empty">No se encontraron resultados para "${escapeHtml(input.value.trim())}".</div>`;
+      return;
+    }
+
+    list.innerHTML = this.filteredEntries.map((entry, idx) => `
+      <div
+        class="search-palette-option"
+        role="option"
+        aria-selected="${idx === this.activeIndex ? 'true' : 'false'}"
+        data-palette-idx="${idx}"
+      >
+        <i class="${escapeHtml(entry.icon)} search-palette-option-icon" aria-hidden="true"></i>
+        <span class="search-palette-option-title">${escapeHtml(entry.title)}</span>
+        <span class="search-palette-option-meta">${escapeHtml(entry.meta)}</span>
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.search-palette-option').forEach(el => {
+      const idx = Number(el.dataset.paletteIdx);
+      el.addEventListener('mousedown', (e) => e.preventDefault());
+      el.addEventListener('mousemove', () => {
+        if (this.activeIndex !== idx) {
+          this.activeIndex = idx;
+          this.renderSelectionOnly();
+        }
+      });
+      el.addEventListener('click', () => {
+        const chosen = this.filteredEntries[idx];
+        if (chosen) this.execute(chosen);
+      });
+    });
+  },
+
+  renderSelectionOnly() {
+    const list = document.getElementById('searchPaletteResults');
+    if (!list) return;
+    list.querySelectorAll('.search-palette-option').forEach((el, idx) => {
+      el.setAttribute('aria-selected', idx === this.activeIndex ? 'true' : 'false');
+      if (idx === this.activeIndex) {
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  },
+
+  execute(entry) {
+    this.close();
+    if (entry && typeof entry.action === 'function') {
+      entry.action();
+    }
+  }
+};
