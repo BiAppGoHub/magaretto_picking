@@ -33,6 +33,7 @@ const APP_CONFIG = {
   TOLERANCIA_DUPLICADO_SEG: parseInt(localStorage.getItem('magaretto_tolerancia_dup') || localStorage.getItem('vete_tolerancia_dup')) || 5,
   LINEA_EMPAQUE: localStorage.getItem('magaretto_linea') || localStorage.getItem('vete_linea') || 'Línea 1 - Galpón Principal',
   AUDIO_VOLUME: parseFloat(localStorage.getItem('magaretto_audio_vol') || localStorage.getItem('vete_audio_vol')) || 0.9,
+  MODO_PRUEBA: localStorage.getItem('magaretto_modo_prueba') === 'true',
   MONEDA: '$'
 };
 
@@ -41,6 +42,7 @@ const AppState = {
   supabaseClient: null,
   isOnline: navigator.onLine,
   supabaseConnected: false,
+  testMode: localStorage.getItem('magaretto_modo_prueba') === 'true',
   currentUser: null, // Usuario autenticado { username, nombre_completo, rol, activo }
   users: [], // Lista de usuarios del sistema
   employees: [], // Lista en caché de empleados
@@ -2383,11 +2385,16 @@ function handleBarcodeScanned(barcode, options = {}) {
 
   // 2. FILTRO ANTI-DUPLICADO INDEPENDIENTE POR ZONA / ESCÁNER
   // Permite que el mismo código pase al mismo tiempo en Zonas diferentes, bloqueando solo rebotes en la misma Zona.
+  const effectiveTol = APP_CONFIG.MODO_PRUEBA ? 0.35 : APP_CONFIG.TOLERANCIA_DUPLICADO_SEG;
   const dupInfo = (typeof MultiZoneScannerManager !== 'undefined')
-    ? MultiZoneScannerManager.isDuplicate(resolved.dedupScopeKey, now, APP_CONFIG.TOLERANCIA_DUPLICADO_SEG)
+    ? MultiZoneScannerManager.isDuplicate(resolved.dedupScopeKey, now, effectiveTol)
     : { blocked: false, elapsedSec: 999, remainingSec: 0 };
 
   if (!options.ignoreDuplicate && dupInfo.blocked) {
+    if (APP_CONFIG.MODO_PRUEBA) {
+      // En Modo Prueba: ignorar rebotes de hardware ultra-rápidos (< 350ms) pero permitir lecturas repetidas
+      return;
+    }
     AudioPlayer.playDuplicateAlertSound();
     if (typeof MultiZoneScannerManager !== 'undefined') {
       MultiZoneScannerManager.notifyZoneResult(resolved.zoneId, resolved.scannerId, 'duplicate');
@@ -2417,11 +2424,24 @@ function handleBarcodeScanned(barcode, options = {}) {
     );
   }
 
+  // 4. MODO DE PRUEBA: Si no coincide ningún empleado, auto-asignar para aceptar CUALQUIER código
+  if (!matchedEmployee && APP_CONFIG.MODO_PRUEBA) {
+    matchedEmployee = (AppState.employees && AppState.employees.find(emp => emp.activo !== false)) ||
+                      (INITIAL_FALLBACK_EMPLOYEES && INITIAL_FALLBACK_EMPLOYEES[0]) || {
+                        id: '49280d93-4242-465b-91c3-bca5c911dfa8',
+                        codigo_empleado: '0101',
+                        nombre_completo: 'Juan Carlos Mendoza (Modo Prueba)',
+                        tarifa_personalizada: 150.00,
+                        activo: true
+                      };
+    parsed.empCode = matchedEmployee.codigo_empleado || '0101';
+  }
+
   // 5. CASO: EMPLEADO DESCONOCIDO
   if (!matchedEmployee) {
     AudioPlayer.playErrorBeep();
     triggerHeroFlash('error', cleanCode, `Empleado "${parsed.empCode}" no registrado (${resolved.zoneName})`, null, 0, 0, currentDate, parsed, resolved);
-    showToast(`❌ Empleado "${parsed.empCode}" no registrado en ${resolved.zoneName} (Código: ${cleanCode}).`, 'error');
+    showToast(`❌ Empleado "${parsed.empCode}" no registrado en ${resolved.zoneName} (Código: ${cleanCode}). Activá el 'Modo Prueba' para aceptar cualquier código.`, 'error');
     return;
   }
 
@@ -2468,7 +2488,8 @@ function handleBarcodeScanned(barcode, options = {}) {
     turno: turno,
     linea_empaque: resolved.zoneName,
     origen_dispositivo: resolved.deviceLabel,
-    numero_correlativo: ''
+    numero_correlativo: '',
+    es_prueba: !!APP_CONFIG.MODO_PRUEBA
   };
 
   // Guardar en la base de datos (Supabase + IndexedDB) y actualizar estado
@@ -2480,7 +2501,10 @@ function handleBarcodeScanned(barcode, options = {}) {
   const empTotalEarnings = empTodayScans.reduce((sum, s) => sum + (parseFloat(s.tarifa_aplicada) || 0), 0);
 
   // Actualizar Tarjeta Gigante del Operador con Animación y Zona/Escáner
-  triggerHeroFlash('success', cleanCode, `CAJA REGISTRADA · ${resolved.zoneName.toUpperCase()}`, matchedEmployee, empTotalBoxes, empTotalEarnings, currentDate, parsed, resolved);
+  const heroActionText = APP_CONFIG.MODO_PRUEBA
+    ? `🧪 MODO PRUEBA · ${resolved.zoneName.toUpperCase()}`
+    : `CAJA REGISTRADA · ${resolved.zoneName.toUpperCase()}`;
+  triggerHeroFlash('success', cleanCode, heroActionText, matchedEmployee, empTotalBoxes, empTotalEarnings, currentDate, parsed, resolved);
 
   // Actualizar todos los tableros y KPIs
   updateAllDashboardStats();
@@ -2489,6 +2513,140 @@ function handleBarcodeScanned(barcode, options = {}) {
 
 // Inicializar el Driver del Lector de Código de Barras
 const BarcodeScanner = new BarcodeScannerDriver(handleBarcodeScanned);
+
+// ==============================================================================
+// 5B. CONTROL DEL MODO DE PRUEBA (ACEPTAR CUALQUIER CÓDIGO DE BARRA)
+// ==============================================================================
+function setTestMode(enable) {
+  APP_CONFIG.MODO_PRUEBA = !!enable;
+  AppState.testMode = !!enable;
+  try {
+    localStorage.setItem('magaretto_modo_prueba', enable ? 'true' : 'false');
+  } catch (_) {}
+
+  updateTestModeUI();
+
+  if (enable) {
+    showToast('🧪 Modo de Prueba ACTIVADO: Se aceptará cualquier código de barra en todas las zonas.', 'success');
+  } else {
+    showToast('Modo de Prueba DESACTIVADO: Volviendo a validación estricta de empleados.', 'info');
+  }
+}
+
+function toggleTestMode() {
+  setTestMode(!APP_CONFIG.MODO_PRUEBA);
+}
+
+function updateTestModeUI() {
+  const isTest = !!APP_CONFIG.MODO_PRUEBA;
+
+  // 1. Botón en la barra compacta del escáner
+  const btnToggle = document.getElementById('btnToggleTestMode');
+  const txtToggle = document.getElementById('testModeStatusText');
+  if (btnToggle) {
+    btnToggle.classList.toggle('active', isTest);
+    if (txtToggle) txtToggle.textContent = isTest ? 'ON' : 'OFF';
+  }
+
+  // 2. Botón en el topbar
+  const topbarBtn = document.getElementById('btnTopbarTestMode');
+  const topbarTxt = document.getElementById('topbarTestModeText');
+  if (topbarBtn) {
+    topbarBtn.classList.toggle('active', isTest);
+    if (topbarTxt) topbarTxt.textContent = isTest ? 'ON' : 'OFF';
+  }
+
+  // 3. Banner informativo en la mesa del escáner
+  const banner = document.getElementById('testModeBanner');
+  if (banner) {
+    banner.style.display = isTest ? 'flex' : 'none';
+  }
+
+  // 4. Checkbox en configuración
+  const chk = document.getElementById('cfgModoPrueba');
+  if (chk && chk.checked !== isTest) {
+    chk.checked = isTest;
+  }
+}
+
+function clearTestScans() {
+  const testScansCount = (AppState.todayScans || []).filter(s => s.es_prueba).length;
+  const totalScans = (AppState.todayScans || []).length;
+  if (totalScans === 0) {
+    showToast('No hay escaneos para limpiar en la jornada.', 'info');
+    return;
+  }
+
+  const msg = testScansCount > 0
+    ? `¿Desea borrar las ${testScansCount} cajas de prueba registradas hoy?`
+    : `¿Desea reiniciar el contador de ${totalScans} cajas de hoy a cero?`;
+
+  if (!confirm(msg)) return;
+
+  if (testScansCount > 0) {
+    AppState.todayScans = AppState.todayScans.filter(s => !s.es_prueba);
+  } else {
+    AppState.todayScans = [];
+  }
+  AppState.recentScans = (AppState.recentScans || []).filter(s => !s.es_prueba);
+
+  // Reiniciar anti-duplicados en memoria
+  AppState.lastScannedTimeByCode = {};
+  if (typeof MultiZoneScannerManager !== 'undefined') {
+    MultiZoneScannerManager.lastTimeByScopeKey = {};
+    MultiZoneScannerManager.refreshZoneCounts();
+  }
+
+  // Limpiar hero card si mostraba scan previo
+  const heroContent = document.getElementById('lastScanContent');
+  const heroEmpty = document.getElementById('lastScanEmpty');
+  if (heroContent && heroEmpty) {
+    heroContent.classList.remove('visible');
+    heroEmpty.style.display = 'block';
+  }
+
+  updateAllDashboardStats();
+  renderLiveScansList();
+  showToast('🧹 Escaneos de prueba eliminados. Contadores reiniciados.', 'success');
+}
+
+function initTestModeControls() {
+  const btnToggle = document.getElementById('btnToggleTestMode');
+  if (btnToggle) {
+    btnToggle.addEventListener('click', () => toggleTestMode());
+  }
+
+  const btnTopbar = document.getElementById('btnTopbarTestMode');
+  if (btnTopbar) {
+    btnTopbar.addEventListener('click', () => toggleTestMode());
+  }
+
+  const btnDisable = document.getElementById('btnDisableTestMode');
+  if (btnDisable) {
+    btnDisable.addEventListener('click', () => setTestMode(false));
+  }
+
+  const btnClear = document.getElementById('btnClearTestScans');
+  if (btnClear) {
+    btnClear.addEventListener('click', () => clearTestScans());
+  }
+
+  const chkCfg = document.getElementById('cfgModoPrueba');
+  if (chkCfg) {
+    chkCfg.checked = !!APP_CONFIG.MODO_PRUEBA;
+    chkCfg.addEventListener('change', (e) => setTestMode(e.target.checked));
+  }
+
+  // Atajo de teclado global Alt+T para alternar Modo Prueba rápidamente
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && (e.key === 't' || e.key === 'T')) {
+      e.preventDefault();
+      toggleTestMode();
+    }
+  });
+
+  updateTestModeUI();
+}
 
 // ==============================================================================
 // 6. RENDERIZADO VISUAL Y TABLEROS DE INFORMACIÓN
@@ -2578,12 +2736,13 @@ function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 
     const p = parsed || parseVeteBarcode(barcode);
 
     heroCard.classList.add('success-flash');
-    statusBadge.className = 'scan-status-badge success';
-    statusBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> ' + message;
-    heroEmpName.innerText = employee.nombre_completo;
+    statusBadge.className = 'scan-status-badge success' + (APP_CONFIG.MODO_PRUEBA ? ' test-mode' : '');
+    statusBadge.innerHTML = (APP_CONFIG.MODO_PRUEBA ? '<i class="fa-solid fa-flask"></i> ' : '<i class="fa-solid fa-circle-check"></i> ') + message;
+    heroEmpName.innerText = employee.nombre_completo + (APP_CONFIG.MODO_PRUEBA ? ' (Modo Prueba)' : '');
     
     // Desglose de 10 Dígitos: Empleado, Calidad, Envase y Zona
     heroCodeText.innerHTML = `
+      ${APP_CONFIG.MODO_PRUEBA ? '<span class="ui-badge ui-badge-warning" style="background:rgba(245,158,11,0.15); color:#b45309; border:1px solid #f59e0b; font-weight:700;"><i class="fa-solid fa-flask"></i> CÓDIGO DE PRUEBA</span>' : ''}
       <span class="ui-badge ui-badge-neutral"><i class="fa-solid fa-user-tag"></i> Emp: <strong>${escapeHtml(p.empCode)}</strong></span>
       <span class="ui-badge ui-badge-info">
         <i class="fa-solid fa-leaf"></i> Cal: <strong>${escapeHtml(p.qualityCode)}</strong> (${escapeHtml(p.calidadCorto)})
@@ -4467,6 +4626,11 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem('vete_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
       localStorage.setItem('vete_linea', APP_CONFIG.LINEA_EMPAQUE);
 
+      const chkModoPrueba = document.getElementById('cfgModoPrueba');
+      if (chkModoPrueba) {
+        setTestMode(chkModoPrueba.checked);
+      }
+
       updateAllDashboardStats();
       showToast('Parámetros de operación guardados correctamente.', 'success');
     });
@@ -4520,6 +4684,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof DashboardManager !== 'undefined') {
     DashboardManager.init();
   }
+
+  // 12D. Inicializar MODO DE PRUEBA (Aceptar cualquier código de barra)
+  initTestModeControls();
 
   // Cargar escaneos del día
   DB.loadTodayScans();
