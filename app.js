@@ -2557,8 +2557,19 @@ function setTestMode(enable) {
   }
 }
 
+let _lastTestModeToggleTime = 0;
 function toggleTestMode(e) {
-  if (e && e.preventDefault) e.preventDefault();
+  if (e) {
+    if (e.preventDefault) e.preventDefault();
+    if (e.stopPropagation) e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  }
+  const now = Date.now();
+  if (now - _lastTestModeToggleTime < 400) {
+    // Evitar doble ejecución en el mismo clic
+    return;
+  }
+  _lastTestModeToggleTime = now;
   setTestMode(!APP_CONFIG.MODO_PRUEBA);
 }
 
@@ -2642,26 +2653,6 @@ function clearTestScans() {
 }
 
 function initTestModeControls() {
-  const btnToggle = document.getElementById('btnToggleTestMode');
-  if (btnToggle) {
-    btnToggle.addEventListener('click', () => toggleTestMode());
-  }
-
-  const btnTopbar = document.getElementById('btnTopbarTestMode');
-  if (btnTopbar) {
-    btnTopbar.addEventListener('click', () => toggleTestMode());
-  }
-
-  const btnDisable = document.getElementById('btnDisableTestMode');
-  if (btnDisable) {
-    btnDisable.addEventListener('click', () => setTestMode(false));
-  }
-
-  const btnClear = document.getElementById('btnClearTestScans');
-  if (btnClear) {
-    btnClear.addEventListener('click', () => clearTestScans());
-  }
-
   const chkCfg = document.getElementById('cfgModoPrueba');
   if (chkCfg) {
     chkCfg.checked = !!APP_CONFIG.MODO_PRUEBA;
@@ -2672,7 +2663,7 @@ function initTestModeControls() {
   document.addEventListener('keydown', (e) => {
     if (e.altKey && (e.key === 't' || e.key === 'T')) {
       e.preventDefault();
-      toggleTestMode();
+      toggleTestMode(e);
     }
   });
 
