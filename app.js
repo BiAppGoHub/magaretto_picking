@@ -738,6 +738,7 @@ const MultiZoneScannerManager = {
     }
     this.syncSettingsUI();
     this.refreshZoneCounts();
+    this.autoConnectSerialPorts();
   },
 
   loadConfig() {
@@ -789,6 +790,7 @@ const MultiZoneScannerManager = {
     } catch (_) {}
     this.syncSettingsUI();
     this.refreshZoneCounts();
+    this.autoConnectSerialPorts();
   },
 
   getZoneMeta(zoneId) {
@@ -1137,6 +1139,63 @@ const MultiZoneScannerManager = {
     }
   },
 
+  async autoConnectSerialPorts() {
+    if (!('serial' in navigator)) return;
+    try {
+      const ports = await navigator.serial.getPorts();
+      if (!ports || ports.length === 0) return;
+      ports.forEach((port, idx) => {
+        const scannerId = idx + 1;
+        if (!this.serialConnections[scannerId]) {
+          this.listenToSerialPort(port, scannerId).catch(() => {});
+        }
+      });
+    } catch (_) {}
+  },
+
+  async listenToSerialPort(port, scannerId) {
+    if (!port.readable) {
+      await port.open({ baudRate: 9600 });
+    }
+    const zone = this.getScannerZone(scannerId);
+    const btn = document.getElementById(`btnPairSerial_${scannerId}`);
+    const pill = document.getElementById(`scannerPill${scannerId}`);
+    if (btn) {
+      btn.classList.add('paired');
+      btn.innerHTML = `<i class="fa-solid fa-link"></i> COM ${scannerId} OK`;
+    }
+    if (pill) pill.classList.add('serial-connected');
+
+    this.serialConnections[scannerId] = port;
+    showToast(`Escáner ${scannerId} (${zone.name}) vinculado por Web Serial.`, 'success');
+
+    const decoder = new TextDecoderStream();
+    port.readable.pipeTo(decoder.writable).catch(() => {});
+    const reader = decoder.readable.getReader();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        buffer += value;
+        const lines = buffer.split(/[\r\n]+/);
+        buffer = lines.pop() || '';
+        lines.forEach(line => {
+          const code = line.trim();
+          if (code) {
+            dispatchBarcodeBurst(code, {
+              zoneId: zone.id,
+              scannerId,
+              hadExplicitZone: true,
+              origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
+            });
+          }
+        });
+      }
+    }
+  },
+
   async pairSerialScanner(scannerId) {
     if (!('serial' in navigator)) {
       showToast('Web Serial requiere Chrome/Edge en HTTPS o localhost. En red local usá prefijos S1..S6 en las pistolas USB.', 'warning');
@@ -1144,44 +1203,7 @@ const MultiZoneScannerManager = {
     }
     try {
       const port = await navigator.serial.requestPort();
-      await port.open({ baudRate: 9600 });
-      const zone = this.getScannerZone(scannerId);
-      const btn = document.getElementById(`btnPairSerial_${scannerId}`);
-      const pill = document.getElementById(`scannerPill${scannerId}`);
-      if (btn) {
-        btn.classList.add('paired');
-        btn.innerHTML = `<i class="fa-solid fa-link"></i> COM ${scannerId} OK`;
-      }
-      if (pill) pill.classList.add('serial-connected');
-
-      this.serialConnections[scannerId] = port;
-      showToast(`Escáner ${scannerId} (${zone.name}) conectado por puerto COM.`, 'success');
-
-      const decoder = new TextDecoderStream();
-      port.readable.pipeTo(decoder.writable).catch(() => {});
-      const reader = decoder.readable.getReader();
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) {
-          buffer += value;
-          const lines = buffer.split(/[\r\n]+/);
-          buffer = lines.pop() || '';
-          lines.forEach(line => {
-            const code = line.trim();
-            if (code) {
-              dispatchBarcodeBurst(code, {
-                zoneId: zone.id,
-                scannerId,
-                hadExplicitZone: true,
-                origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
-              });
-            }
-          });
-        }
-      }
+      await this.listenToSerialPort(port, scannerId);
     } catch (err) {
       if (err && err.name !== 'NotFoundError') {
         showToast(`No se pudo abrir puerto COM ${scannerId}: ${err.message}`, 'error');
@@ -1312,15 +1334,17 @@ class BarcodeScannerDriver {
       this.lastKeyTime = currentTime;
 
       if (e.key === 'Enter') {
-        // Fin de lectura por la pistola
-        const scannedCode = this.buffer.trim() || (document.getElementById('barcodeInput')?.value || '').trim();
+        // Fin de lectura por la pistola o entrada en el campo de escaneo
+        const inputEl = document.getElementById('barcodeInput');
+        const inputVal = inputEl ? inputEl.value.trim() : '';
+        const scannedCode = inputVal || this.buffer.trim();
         if (scannedCode) {
           e.preventDefault();
           this.processBarcode(scannedCode);
         }
         this.buffer = '';
-        if (document.getElementById('barcodeInput')) {
-          document.getElementById('barcodeInput').value = '';
+        if (inputEl) {
+          inputEl.value = '';
         }
       } else if (e.key.length === 1) {
         // Carácter alfanumérico o separador de prefijo de zona
@@ -2533,9 +2557,16 @@ function setTestMode(enable) {
   }
 }
 
-function toggleTestMode() {
+function toggleTestMode(e) {
+  if (e && e.preventDefault) e.preventDefault();
   setTestMode(!APP_CONFIG.MODO_PRUEBA);
 }
+
+// Exponer en window para llamadas directas onclick y compatibilidad global
+window.setTestMode = setTestMode;
+window.toggleTestMode = toggleTestMode;
+window.clearTestScans = clearTestScans;
+window.updateTestModeUI = updateTestModeUI;
 
 function updateTestModeUI() {
   const isTest = !!APP_CONFIG.MODO_PRUEBA;
@@ -4296,7 +4327,7 @@ async function confirmDeleteUser(userIdOrUsername) {
 // ==============================================================================
 // 10. INICIALIZACIÓN DE EVENTOS Y FORMULARIOS
 // ==============================================================================
-document.addEventListener('DOMContentLoaded', () => {
+function initializeApp() {
   // 0. Inicializar Autenticación y Control de Roles (RBAC)
   AuthManager.init();
 
@@ -4697,10 +4728,20 @@ document.addEventListener('DOMContentLoaded', () => {
   // Registro de Service Worker para PWA (Instalación en Celulares Android / iOS)
   if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
     navigator.serviceWorker.register('./sw.js')
-      .then(() => console.log('PWA Service Worker registrado correctamente.'))
+      .then((reg) => {
+        console.log('PWA Service Worker registrado correctamente.');
+        reg.update();
+      })
       .catch((err) => console.warn('Error registrando Service Worker:', err));
   }
-});
+}
+
+// Inicialización segura garantizada (si el DOM ya cargó, iniciar de inmediato)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}
 
 // ==============================================================================
 // 12. GESTOR DE INSTALACIÓN PWA (PROMPT DE INSTALACIÓN EN PC & CELULARES)

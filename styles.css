@@ -5580,11 +5580,11 @@ button, input, select, textarea {
 }
 
 .btn-test-mode-toggle.active {
-  background: rgba(245, 158, 11, 0.16);
-  color: #d97706;
-  border-color: #f59e0b;
-  font-weight: 700;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+  background: #f59e0b !important;
+  color: #ffffff !important;
+  border-color: #d97706 !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4) !important;
 }
 
 .btn-topbar-test-mode {
@@ -5608,11 +5608,10 @@ button, input, select, textarea {
 }
 
 .btn-topbar-test-mode.active {
-  background: rgba(245, 158, 11, 0.18);
-  color: #b45309;
-  border-color: #f59e0b;
-  font-weight: 700;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
+  background: #f59e0b !important;
+  color: #ffffff !important;
+  border-color: #d97706 !important;
+  font-weight: 700 !important;
 }
 
 .test-mode-banner {

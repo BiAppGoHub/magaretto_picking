@@ -89,7 +89,7 @@
   </script>
 
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="styles.css?v=3.4.0">
+  <link rel="stylesheet" href="styles.css?v=3.4.2">
 </head>
 <body>
 
@@ -339,7 +339,7 @@
           </div>
 
           <!-- Botón Rápido Modo de Prueba (Aceptar cualquier código) -->
-          <button type="button" class="btn-topbar-test-mode" id="btnTopbarTestMode" title="Modo de Prueba: Acepta cualquier código de barra sin exigir empacador registrado (Alt+T)" aria-label="Alternar modo de prueba">
+          <button type="button" class="btn-topbar-test-mode" id="btnTopbarTestMode" onclick="toggleTestMode(event)" title="Modo de Prueba: Acepta cualquier código de barra sin exigir empacador registrado (Alt+T)" aria-label="Alternar modo de prueba">
             <i class="fa-solid fa-flask"></i>
             <span class="hide-mobile">Prueba: <strong id="topbarTestModeText">OFF</strong></span>
           </button>
@@ -437,10 +437,10 @@
                 <button type="button" class="btn-manual-scan-compact" id="btnManualRegisterModal" title="Colocar caja manualmente si la etiqueta está rota">
                   <i class="fa-solid fa-hand"></i> Colocar manualmente
                 </button>
-                <button type="button" class="btn-test-mode-toggle" id="btnToggleTestMode" title="Modo Prueba: Acepta cualquier código de barra de cualquier producto o formato (Alt+T)">
-                  <i class="fa-solid fa-flask"></i> <span class="hide-mobile">Modo Prueba:</span> <strong id="testModeStatusText">OFF</strong>
-                </button>
               </form>
+              <button type="button" class="btn-test-mode-toggle" id="btnToggleTestMode" onclick="toggleTestMode(event)" title="Modo Prueba: Acepta cualquier código de barra de cualquier producto o formato (Alt+T)">
+                <i class="fa-solid fa-flask"></i> <span class="hide-mobile">Modo Prueba:</span> <strong id="testModeStatusText">OFF</strong>
+              </button>
             </div>
 
             <!-- Banner Informativo del Modo de Prueba -->
@@ -453,10 +453,10 @@
                 </div>
               </div>
               <div class="test-mode-banner-actions">
-                <button type="button" class="btn-clear-test-scans" id="btnClearTestScans" title="Eliminar las cajas de prueba registradas hoy">
+                <button type="button" class="btn-clear-test-scans" id="btnClearTestScans" onclick="clearTestScans(event)" title="Eliminar las cajas de prueba registradas hoy">
                   <i class="fa-solid fa-trash-can"></i> Limpiar Pruebas
                 </button>
-                <button type="button" class="btn-disable-test-mode" id="btnDisableTestMode" title="Volver al modo normal de producción">
+                <button type="button" class="btn-disable-test-mode" id="btnDisableTestMode" onclick="setTestMode(false)" title="Volver al modo normal de producción">
                   Desactivar
                 </button>
               </div>
@@ -2172,6 +2172,6 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Script de la Aplicación -->
-  <script src="app.js?v=3.4.0"></script>
+  <script src="app.js?v=3.4.2"></script>
 </body>
 </html>
