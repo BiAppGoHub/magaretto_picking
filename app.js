@@ -584,7 +584,8 @@ const INITIAL_FALLBACK_EMPLOYEES = [
   { id: '0689de4c-abf0-4cd1-9c71-9b5be0dcdf87', codigo_empleado: '0102', nombre_completo: 'María Elena Gómez', dni_rut: '30.124.789', telefono: '+54 9 261 455-2233', tarifa_personalizada: 150.00, activo: true },
   { id: '5f9525b6-529f-4313-bcd1-562e3a5d274a', codigo_empleado: '0103', nombre_completo: 'Pedro Antonio López', dni_rut: '27.890.456', telefono: '+54 9 261 455-3344', tarifa_personalizada: 160.00, activo: true },
   { id: '657e0343-60cb-4875-87f9-f13941c2aeaf', codigo_empleado: '0104', nombre_completo: 'Rosaura Benítez', dni_rut: '32.654.987', telefono: '+54 9 261 455-4455', tarifa_personalizada: 150.00, activo: true },
-  { id: '887f1a90-5456-4f6b-b3f9-a1e648b7165a', codigo_empleado: '0121', nombre_completo: 'Carlos Rodríguez (Ejemplo 0121)', dni_rut: '31.852.963', telefono: '+54 9 261 455-7788', tarifa_personalizada: 150.00, activo: true }
+  { id: '887f1a90-5456-4f6b-b3f9-a1e648b7165a', codigo_empleado: '0121', nombre_completo: 'Carlos Rodríguez (Ejemplo 0121)', dni_rut: '31.852.963', telefono: '+54 9 261 455-7788', tarifa_personalizada: 150.00, activo: true },
+  { id: '0f3d7414-1348-4fa2-835d-e2c033611776', codigo_empleado: '2010', nombre_completo: 'Operario 2010 (Línea de Empaque)', dni_rut: '35.201.002', telefono: '+54 9 261 455-2010', tarifa_personalizada: 150.00, activo: true }
 ];
 
 // ==============================================================================

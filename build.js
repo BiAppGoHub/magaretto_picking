@@ -28,7 +28,9 @@ const ASSETS_TO_BUILD = [
   'icon-512.png',
   'apple-touch-icon.png',
   'icon.svg',
-  'company_logo.jpg'
+  'company_logo.jpg',
+  'ver_codigo_00020100002.html',
+  'barcode_00020100002.svg'
 ];
 
 console.log('====================================================');
