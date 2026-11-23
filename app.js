@@ -478,8 +478,8 @@ function parseVeteBarcode(rawBarcode) {
 
     return {
       isValid: true,
-      is7Digit: true,
-      fullCode: clean.substring(0, 7),
+      is7Digit: clean.length === 7,
+      fullCode: clean,
       empCode: empCode,
       barcodeQualityCode: barcodeQualityCode,
       qualityCode: qualityDetails.qualityCode,
@@ -1308,6 +1308,7 @@ const MultiZoneScannerManager = {
     this.serialReaders[scannerId] = reader;
     const decoder = new TextDecoder();
     let buffer = '';
+    let serialTrailingTimer = null;
 
     try {
       while (true) {
@@ -1315,7 +1316,7 @@ const MultiZoneScannerManager = {
         if (done) break;
         if (value) {
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split(/[\r\n]+/);
+          const lines = buffer.split(/[\r\n\t\x03]+/);
           buffer = lines.pop() || '';
           for (const line of lines) {
             const code = line.trim();
@@ -1328,6 +1329,23 @@ const MultiZoneScannerManager = {
               });
             }
           }
+
+          // Buffer flush por inactividad (100ms): si el escáner envía sin Enter ni salto de línea
+          if (serialTrailingTimer) clearTimeout(serialTrailingTimer);
+          if (buffer.trim().length >= 4) {
+            serialTrailingTimer = setTimeout(() => {
+              if (buffer.trim()) {
+                const code = buffer.trim();
+                buffer = '';
+                dispatchBarcodeBurst(code, {
+                  zoneId: zone.id,
+                  scannerId,
+                  hadExplicitZone: true,
+                  origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
+                });
+              }
+            }, 100);
+          }
         }
       }
     } catch (err) {
@@ -1335,6 +1353,7 @@ const MultiZoneScannerManager = {
         console.warn(`Puerto serial Escáner ${scannerId} cerrado o desconectado:`, err);
       }
     } finally {
+      if (serialTrailingTimer) clearTimeout(serialTrailingTimer);
       try {
         reader.releaseLock();
       } catch (_) {}
@@ -1588,6 +1607,7 @@ class BarcodeScannerDriver {
     this.onScan = onScanCallback;
     this.buffer = '';
     this.lastKeyTime = Date.now();
+    this.trailingTimer = null;
     this.initGlobalListener();
   }
 
@@ -1607,14 +1627,20 @@ class BarcodeScannerDriver {
       const currentTime = Date.now();
       const timeDiff = currentTime - this.lastKeyTime;
 
-      // Las pistolas envían caracteres a menos de 50ms entre sí
-      if (timeDiff > 250 && this.buffer.length > 0 && e.key !== 'Enter') {
-        this.buffer = ''; // Resetear buffer si hubo pausa manual
+      // Tolerancia amplia entre caracteres (1000ms): evita que una pequeña pausa o salto de USB corte el código
+      if (timeDiff > 1000 && this.buffer.length > 0 && e.key !== 'Enter' && e.key !== 'Tab') {
+        this.buffer = ''; // Resetear buffer si hubo pausa manual prolongada
       }
 
       this.lastKeyTime = currentTime;
 
-      if (e.key === 'Enter') {
+      const isTerminalKey = (e.key === 'Enter' || e.key === 'Tab');
+
+      if (isTerminalKey) {
+        if (this.trailingTimer) {
+          clearTimeout(this.trailingTimer);
+          this.trailingTimer = null;
+        }
         // Fin de lectura por la pistola o entrada en el campo de escaneo
         const inputEl = document.getElementById('barcodeInput');
         const inputVal = inputEl ? inputEl.value.trim() : '';
@@ -1630,6 +1656,19 @@ class BarcodeScannerDriver {
       } else if (e.key.length === 1) {
         // Carácter alfanumérico o separador de prefijo de zona
         this.buffer += e.key;
+
+        // Auto-detección para escáneres configurados en modo "Sin sufijo" (no envían Enter ni Tab):
+        // Si llegaron caracteres y se detiene por 120ms, procesar el código acumulado
+        if (this.trailingTimer) clearTimeout(this.trailingTimer);
+        this.trailingTimer = setTimeout(() => {
+          if (this.buffer.trim().length >= 4) {
+            const code = this.buffer.trim();
+            this.buffer = '';
+            const inputEl = document.getElementById('barcodeInput');
+            if (inputEl && inputEl.value) inputEl.value = '';
+            this.processBarcode(code);
+          }
+        }, 120);
       }
     });
 
@@ -2780,7 +2819,7 @@ function handleBarcodeScanned(barcode, options = {}) {
   const newRecord = {
     id: 'scan_' + now + '_' + Math.random().toString(36).substr(2, 5),
     empleado_id: matchedEmployee.id,
-    codigo_barra_leido: (cleanCode.length >= 7 ? cleanCode.substring(0, 7) : cleanCode) || barcode,
+    codigo_barra_leido: cleanCode || barcode,
     codigo_empleado_extraido: parsed.empCode,
     codigo_calidad: parsed.qualityCode,
     nombre_calidad: parsed.calidadNombre,
