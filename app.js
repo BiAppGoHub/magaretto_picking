@@ -726,6 +726,7 @@ const MultiZoneScannerManager = {
   lastTimeByScopeKey: {},
   cooldownMetaByZone: {}, // { zona_1: { code, expiresAt, lastLabel } }
   serialConnections: {},
+  serialReaders: {},
   _tickerInterval: null,
   _initialized: false,
 
@@ -1158,40 +1159,138 @@ const MultiZoneScannerManager = {
       await port.open({ baudRate: 9600 });
     }
     const zone = this.getScannerZone(scannerId);
+    this.serialConnections[scannerId] = port;
+    this.updateSerialUI(scannerId, true);
+
+    showToast(`Escáner ${scannerId} (${zone.name}) vinculado por Web Serial.`, 'success');
+
+    const reader = port.readable.getReader();
+    this.serialReaders[scannerId] = reader;
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/[\r\n]+/);
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            const code = line.trim();
+            if (code) {
+              dispatchBarcodeBurst(code, {
+                zoneId: zone.id,
+                scannerId,
+                hadExplicitZone: true,
+                origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
+              });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (err && err.name !== 'AbortError') {
+        console.warn(`Puerto serial Escáner ${scannerId} cerrado o desconectado:`, err);
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch (_) {}
+      delete this.serialReaders[scannerId];
+      delete this.serialConnections[scannerId];
+      this.updateSerialUI(scannerId, false);
+    }
+  },
+
+  updateSerialUI(scannerId, isConnected) {
     const btn = document.getElementById(`btnPairSerial_${scannerId}`);
     const pill = document.getElementById(`scannerPill${scannerId}`);
     if (btn) {
-      btn.classList.add('paired');
-      btn.innerHTML = `<i class="fa-solid fa-link"></i> COM ${scannerId} OK`;
+      if (isConnected) {
+        btn.classList.add('paired');
+        btn.innerHTML = `<i class="fa-solid fa-link-slash"></i> Desconectar COM ${scannerId}`;
+        btn.title = `Escáner ${scannerId} conectado. Clic para desconectar.`;
+      } else {
+        btn.classList.remove('paired');
+        btn.innerHTML = `<i class="fa-solid fa-plug"></i> COM ${scannerId}`;
+        btn.title = `Vincular puerto USB-COM para Escáner ${scannerId}`;
+      }
     }
-    if (pill) pill.classList.add('serial-connected');
+    if (pill) {
+      if (isConnected) {
+        pill.classList.add('serial-connected');
+        pill.title = `Escáner ${scannerId} conectado (Web Serial). Clic para desconectar.`;
+      } else {
+        pill.classList.remove('serial-connected');
+        const pfx = this.config.prefixes[scannerId] || `S${scannerId}`;
+        pill.title = `Escáner ${scannerId} (Prefijo ${pfx} o Clic para conectar COM)`;
+      }
+    }
+  },
 
-    this.serialConnections[scannerId] = port;
-    showToast(`Escáner ${scannerId} (${zone.name}) vinculado por Web Serial.`, 'success');
+  async disconnectSerialScanner(scannerId) {
+    const port = this.serialConnections[scannerId];
+    const reader = this.serialReaders[scannerId];
 
-    const decoder = new TextDecoderStream();
-    port.readable.pipeTo(decoder.writable).catch(() => {});
-    const reader = decoder.readable.getReader();
-    let buffer = '';
+    if (!port && !reader) {
+      this.updateSerialUI(scannerId, false);
+      return;
+    }
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value) {
-        buffer += value;
-        const lines = buffer.split(/[\r\n]+/);
-        buffer = lines.pop() || '';
-        lines.forEach(line => {
-          const code = line.trim();
-          if (code) {
-            dispatchBarcodeBurst(code, {
-              zoneId: zone.id,
-              scannerId,
-              hadExplicitZone: true,
-              origenDispositivo: `Escáner ${scannerId} COM (${zone.name})`
-            });
-          }
-        });
+    try {
+      if (reader) {
+        await reader.cancel();
+      }
+    } catch (e) {
+      console.warn('Error cancelando reader serial:', e);
+    }
+
+    try {
+      if (port) {
+        await port.close();
+      }
+    } catch (e) {
+      console.warn('Error cerrando puerto serial:', e);
+    }
+
+    delete this.serialConnections[scannerId];
+    delete this.serialReaders[scannerId];
+    this.updateSerialUI(scannerId, false);
+    showToast(`Escáner ${scannerId} desconectado.`, 'info');
+  },
+
+  async disconnectAllScanners() {
+    const connectedIds = Object.keys(this.serialConnections);
+    if (connectedIds.length === 0) {
+      showToast('No hay escáneres COM conectados actualmente.', 'info');
+      return;
+    }
+    for (const id of connectedIds) {
+      await this.disconnectSerialScanner(Number(id));
+    }
+    showToast('Todos los escáneres seriales han sido desconectados.', 'success');
+  },
+
+  async toggleSerialPairing(scannerId) {
+    if (this.serialConnections[scannerId]) {
+      if (confirm(`¿Desea desconectar el Escáner ${scannerId} del puerto COM?`)) {
+        await this.disconnectSerialScanner(scannerId);
+      }
+      return;
+    }
+    await this.pairSerialScanner(scannerId);
+  },
+
+  async handlePillClick(scannerId) {
+    if (this.serialConnections[scannerId]) {
+      if (confirm(`El Escáner ${scannerId} está conectado por puerto COM.\n¿Desea desconectarlo?`)) {
+        await this.disconnectSerialScanner(scannerId);
+      }
+    } else {
+      if (confirm(`¿Desea conectar el Escáner ${scannerId} a un puerto USB-COM?`)) {
+        await this.pairSerialScanner(scannerId);
       }
     }
   },
@@ -1274,7 +1373,12 @@ const MultiZoneScannerManager = {
     for (let id = 1; id <= 6; id++) {
       const btnSerial = document.getElementById(`btnPairSerial_${id}`);
       if (btnSerial) {
-        btnSerial.addEventListener('click', () => this.pairSerialScanner(id));
+        btnSerial.addEventListener('click', () => this.toggleSerialPairing(id));
+      }
+      const pill = document.getElementById(`scannerPill${id}`);
+      if (pill) {
+        pill.style.cursor = 'pointer';
+        pill.addEventListener('click', () => this.handlePillClick(id));
       }
     }
 
@@ -2577,7 +2681,57 @@ function toggleTestMode(e) {
 window.setTestMode = setTestMode;
 window.toggleTestMode = toggleTestMode;
 window.clearTestScans = clearTestScans;
+window.deleteSingleScan = deleteSingleScan;
 window.updateTestModeUI = updateTestModeUI;
+
+async function deleteSingleScan(scanId) {
+  if (!scanId) return;
+  const scan = (AppState.todayScans || []).find(s => s.id === scanId) || (AppState.recentScans || []).find(s => s.id === scanId);
+  const desc = scan ? `${scan.empleado_nombre_snapshot || 'Caja'} (${scan.codigo_barra_leido})` : 'este escaneo';
+  if (!confirm(`¿Eliminar definitivamente ${desc} de la base de datos?`)) return;
+
+  // Actualización optimista de UI
+  AppState.todayScans = (AppState.todayScans || []).filter(s => s.id !== scanId);
+  AppState.recentScans = (AppState.recentScans || []).filter(s => s.id !== scanId);
+  updateAllDashboardStats();
+  renderLiveScansList();
+
+  try {
+    if (AppState.supabaseConnected && AppState.supabaseClient) {
+      const { error } = await AppState.supabaseClient
+        .from('registros_cajas')
+        .delete()
+        .eq('id', scanId);
+      if (error) {
+        console.error('Error eliminando escaneo de Supabase:', error);
+        showToast(`Error al borrar en Supabase: ${error.message}`, 'error');
+        await DB.loadTodayScans();
+        return;
+      }
+    }
+
+    // Limpiar de cola IndexedDB si estaba offline
+    if (DB && DB.db) {
+      try {
+        const tx = DB.db.transaction(['scans_queue'], 'readwrite');
+        const store = tx.objectStore('scans_queue');
+        const getAllReq = store.getAll();
+        getAllReq.onsuccess = () => {
+          (getAllReq.result || []).forEach(item => {
+            if (item.id === scanId && item.local_id) {
+              store.delete(item.local_id);
+            }
+          });
+        };
+      } catch (_) {}
+    }
+
+    showToast('🗑️ Escaneo eliminado definitivamente de la base de datos.', 'success');
+  } catch (err) {
+    console.error('Error en deleteSingleScan:', err);
+    showToast('Error al eliminar el escaneo: ' + (err.message || err), 'error');
+  }
+}
 
 function updateTestModeUI() {
   const isTest = !!APP_CONFIG.MODO_PRUEBA;
@@ -2611,45 +2765,127 @@ function updateTestModeUI() {
   }
 }
 
-function clearTestScans() {
+async function clearTestScans(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
   const testScansCount = (AppState.todayScans || []).filter(s => s.es_prueba).length;
   const totalScans = (AppState.todayScans || []).length;
-  if (totalScans === 0) {
-    showToast('No hay escaneos para limpiar en la jornada.', 'info');
+  const totalRecent = (AppState.recentScans || []).length;
+
+  if (totalScans === 0 && totalRecent === 0) {
+    showToast('No hay escaneos para limpiar en la base de datos.', 'info');
     return;
   }
 
-  const msg = testScansCount > 0
-    ? `¿Desea borrar las ${testScansCount} cajas de prueba registradas hoy?`
-    : `¿Desea reiniciar el contador de ${totalScans} cajas de hoy a cero?`;
-
-  if (!confirm(msg)) return;
+  let deleteMode = 'tests'; // 'tests' | 'all_today'
+  let confirmMsg = '';
 
   if (testScansCount > 0) {
-    AppState.todayScans = AppState.todayScans.filter(s => !s.es_prueba);
+    confirmMsg = `¿Desea eliminar definitivamente las ${testScansCount} cajas de prueba de la base de datos en Supabase?`;
+    deleteMode = 'tests';
+  } else if (totalScans > 0) {
+    confirmMsg = `No hay cajas marcadas con bandera de prueba.\n\n¿Desea eliminar definitivamente las ${totalScans} cajas de hoy de la base de datos para comenzar una jornada limpia?`;
+    deleteMode = 'all_today';
   } else {
-    AppState.todayScans = [];
-  }
-  AppState.recentScans = (AppState.recentScans || []).filter(s => !s.es_prueba);
-
-  // Reiniciar anti-duplicados en memoria
-  AppState.lastScannedTimeByCode = {};
-  if (typeof MultiZoneScannerManager !== 'undefined') {
-    MultiZoneScannerManager.lastTimeByScopeKey = {};
-    MultiZoneScannerManager.refreshZoneCounts();
+    confirmMsg = `No hay cajas escaneadas hoy, pero hay ${totalRecent} movimientos recientes.\n¿Desea limpiar los registros de prueba recientes de la base de datos?`;
+    deleteMode = 'tests';
   }
 
-  // Limpiar hero card si mostraba scan previo
-  const heroContent = document.getElementById('lastScanContent');
-  const heroEmpty = document.getElementById('lastScanEmpty');
-  if (heroContent && heroEmpty) {
-    heroContent.classList.remove('visible');
-    heroEmpty.style.display = 'block';
+  if (!confirm(confirmMsg)) return;
+
+  const btnClear = document.getElementById('btnClearTestScans');
+  if (btnClear) {
+    btnClear.disabled = true;
+    btnClear.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Limpiando...';
   }
 
-  updateAllDashboardStats();
-  renderLiveScansList();
-  showToast('🧹 Escaneos de prueba eliminados. Contadores reiniciados.', 'success');
+  try {
+    const today = new Date();
+    const utcDateStr = today.toISOString().split('T')[0];
+    const localDateStr = today.toLocaleDateString('en-CA');
+    const targetDates = Array.from(new Set([utcDateStr, localDateStr]));
+
+    if (AppState.supabaseConnected && AppState.supabaseClient) {
+      if (deleteMode === 'tests') {
+        const testIds = (AppState.todayScans || [])
+          .concat(AppState.recentScans || [])
+          .filter(s => s.es_prueba)
+          .map(s => s.id);
+
+        if (testIds.length > 0) {
+          const { error } = await AppState.supabaseClient
+            .from('registros_cajas')
+            .delete()
+            .in('id', testIds);
+          if (error) console.error('Error borrando tests por ID en Supabase:', error);
+        }
+
+        // También borrar cualquier registro con es_prueba = true en la tabla
+        await AppState.supabaseClient
+          .from('registros_cajas')
+          .delete()
+          .eq('es_prueba', true);
+
+      } else {
+        // Borrar todos los registros de la jornada de hoy
+        const { error } = await AppState.supabaseClient
+          .from('registros_cajas')
+          .delete()
+          .in('fecha_dia', targetDates);
+        if (error) console.error('Error borrando hoy en Supabase:', error);
+      }
+    }
+
+    // Limpiar cola IndexedDB
+    if (DB && DB.db) {
+      try {
+        const tx = DB.db.transaction(['scans_queue'], 'readwrite');
+        tx.objectStore('scans_queue').clear();
+      } catch (e) {}
+    }
+
+    // Limpiar cache localStorage si existiera
+    try {
+      localStorage.removeItem('vete_cached_scans');
+    } catch (_) {}
+
+    // Limpiar memoria
+    if (deleteMode === 'tests') {
+      AppState.todayScans = (AppState.todayScans || []).filter(s => !s.es_prueba);
+      AppState.recentScans = (AppState.recentScans || []).filter(s => !s.es_prueba);
+    } else {
+      AppState.todayScans = [];
+      AppState.recentScans = [];
+    }
+
+    // Reiniciar anti-duplicados en memoria
+    AppState.lastScannedTimeByCode = {};
+    if (typeof MultiZoneScannerManager !== 'undefined') {
+      MultiZoneScannerManager.lastTimeByScopeKey = {};
+      MultiZoneScannerManager.cooldownMetaByZone = {};
+      MultiZoneScannerManager.refreshZoneCounts();
+    }
+
+    // Limpiar hero card si mostraba scan previo
+    const heroContent = document.getElementById('lastScanContent');
+    const heroEmpty = document.getElementById('lastScanEmpty');
+    if (heroContent && heroEmpty) {
+      heroContent.classList.remove('visible');
+      heroEmpty.style.display = 'block';
+    }
+
+    // Recargar desde Supabase para confirmar sincronización absoluta
+    await DB.loadTodayScans();
+    showToast('🧹 Escaneos eliminados definitivamente de la base de datos.', 'success');
+  } catch (err) {
+    console.error('Error en clearTestScans:', err);
+    showToast('Ocurrió un error al limpiar los escaneos: ' + (err.message || err), 'error');
+  } finally {
+    if (btnClear) {
+      btnClear.disabled = false;
+      btnClear.innerHTML = '<i class="fa-solid fa-trash-can"></i> Limpiar Pruebas';
+    }
+  }
 }
 
 function initTestModeControls() {
@@ -2999,9 +3235,14 @@ function renderLiveScansList() {
             </div>
           </div>
         </div>
-        <div class="log-meta-info">
-          <div class="log-price-badge" style="color:${calBadgeColor}; font-weight:600; font-size:0.75rem;"><i class="fa-solid fa-box"></i> ${calLabel}: ${boxLabel}</div>
-          <div class="log-time" style="font-size:0.75rem;">${displayTimestamp}</div>
+        <div class="log-meta-info" style="display:flex; align-items:center; gap:8px;">
+          <div>
+            <div class="log-price-badge" style="color:${calBadgeColor}; font-weight:600; font-size:0.75rem;"><i class="fa-solid fa-box"></i> ${calLabel}: ${boxLabel}</div>
+            <div class="log-time" style="font-size:0.75rem;">${displayTimestamp}</div>
+          </div>
+          <button type="button" class="btn-delete-scan-row" title="Eliminar este escaneo" onclick="event.stopPropagation(); deleteSingleScan('${scan.id}')">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
         </div>
       </div>
     `;

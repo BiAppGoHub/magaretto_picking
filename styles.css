@@ -5374,6 +5374,13 @@ button, input, select, textarea {
   padding: 2px 7px;
   border-radius: 6px;
   transition: all 0.2s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scanner-hw-pill:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
 }
 
 .scanner-hw-pill.active-pulse {
@@ -5384,8 +5391,16 @@ button, input, select, textarea {
 }
 
 .scanner-hw-pill.serial-connected {
-  border-color: var(--status-success);
-  color: var(--status-success);
+  border-color: rgba(34, 197, 94, 0.6);
+  color: #22C55E;
+  background: rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.2);
+}
+
+.scanner-hw-pill.serial-connected:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.14);
 }
 
 .zone-card-stats {
@@ -5533,9 +5548,58 @@ button, input, select, textarea {
 }
 
 .btn-serial-pair.paired {
-  border-color: var(--status-success);
-  color: var(--status-success);
-  background: var(--status-success-bg);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #22C55E;
+  background: rgba(34, 197, 94, 0.12);
+  transition: all 0.2s ease;
+}
+
+.btn-serial-pair.paired:hover {
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.btn-disconnect-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #F87171;
+  font-family: var(--font-sans);
+  font-size: clamp(0.68rem, 0.62vw, 0.8rem);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-disconnect-all:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #EF4444;
+  color: #FFFFFF;
+}
+
+.btn-delete-scan-row {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+}
+
+.btn-delete-scan-row:hover {
+  color: #EF4444;
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .zones-options-row {
