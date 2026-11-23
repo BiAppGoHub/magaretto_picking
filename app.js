@@ -1280,8 +1280,8 @@ const MultiZoneScannerManager = {
   async tryOpenAndListen(port, scannerId, maxAttempts = 2) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        await this.listenToSerialPort(port, scannerId);
-        return true;
+        const ok = await this.openAndStartListening(port, scannerId);
+        if (ok) return true;
       } catch (err) {
         console.warn(`Intento ${attempt} al abrir puerto para Escáner ${scannerId}:`, err);
         if (attempt < maxAttempts) {
@@ -1294,7 +1294,7 @@ const MultiZoneScannerManager = {
     return false;
   },
 
-  async listenToSerialPort(port, scannerId) {
+  async openAndStartListening(port, scannerId) {
     if (!port.readable) {
       await port.open({ baudRate: 9600 });
     }
@@ -1304,6 +1304,15 @@ const MultiZoneScannerManager = {
 
     showToast(`Escáner ${scannerId} (${zone.name}) vinculado por Web Serial.`, 'success');
 
+    // Iniciar loop de lectura en segundo plano (NO bloquea los demás escáneres en el bucle de reconexión)
+    this.runReaderLoop(port, scannerId, zone).catch(err => {
+      console.warn(`Error en lectura de Escáner ${scannerId}:`, err);
+    });
+
+    return true;
+  },
+
+  async runReaderLoop(port, scannerId, zone) {
     const reader = port.readable.getReader();
     this.serialReaders[scannerId] = reader;
     const decoder = new TextDecoder();
@@ -1484,21 +1493,24 @@ const MultiZoneScannerManager = {
     }
     try {
       const port = await navigator.serial.requestPort();
-      await this.listenToSerialPort(port, scannerId);
+      await this.openAndStartListening(port, scannerId);
 
       // Persistir asignación exacta en localStorage
       const allPorts = await navigator.serial.getPorts();
-      const portIndex = allPorts.indexOf(port);
+      let portIndex = allPorts.indexOf(port);
+      if (portIndex === -1) {
+        portIndex = allPorts.findIndex(p => p.readable !== null);
+      }
       const info = (port.getInfo && typeof port.getInfo === 'function') ? port.getInfo() : {};
 
       if (!this.config.serialAssignments) this.config.serialAssignments = {};
       this.config.serialAssignments[scannerId] = {
-        portIndex: portIndex >= 0 ? portIndex : 0,
+        portIndex: portIndex >= 0 ? portIndex : (Number(scannerId) - 1),
         usbVendorId: info.usbVendorId || 0,
         usbProductId: info.usbProductId || 0,
         pairedAt: Date.now()
       };
-      this.saveConfig();
+      this.saveConfig({ serialAssignments: this.config.serialAssignments });
     } catch (err) {
       if (err && err.name !== 'NotFoundError') {
         showToast(`No se pudo abrir puerto COM ${scannerId}: ${err.message}`, 'error');
@@ -1554,15 +1566,32 @@ const MultiZoneScannerManager = {
 
     const btnSaveZones = document.getElementById('btnSaveZonesConfig');
     if (btnSaveZones) {
-      btnSaveZones.addEventListener('click', () => {
+      btnSaveZones.addEventListener('click', async () => {
         const prefixes = {};
         for (let id = 1; id <= 6; id++) {
           prefixes[id] = document.getElementById(`cfgScanner${id}Prefix`)?.value || `S${id}`;
         }
         const duplicateScope = document.getElementById('cfgDuplicateScope')?.value || 'zone';
         const autoRouteSimultaneous = document.getElementById('cfgAutoRouteNoPrefix')?.checked !== false;
-        this.saveConfig({ prefixes, duplicateScope, autoRouteSimultaneous });
-        showToast('Configuración de 3 Zonas y 6 Escáneres guardada correctamente.', 'success');
+
+        // Registrar explícitamente todos los puertos COM activos en la configuración a guardar
+        if (!this.config.serialAssignments) this.config.serialAssignments = {};
+        const allPorts = ('serial' in navigator) ? await navigator.serial.getPorts().catch(() => []) : [];
+        for (const id in this.serialConnections) {
+          const port = this.serialConnections[id];
+          let portIdx = allPorts.indexOf(port);
+          if (portIdx === -1) portIdx = Number(id) - 1;
+          const info = (port.getInfo && typeof port.getInfo === 'function') ? port.getInfo() : {};
+          this.config.serialAssignments[id] = {
+            portIndex: portIdx >= 0 ? portIdx : 0,
+            usbVendorId: info.usbVendorId || 0,
+            usbProductId: info.usbProductId || 0,
+            pairedAt: Date.now()
+          };
+        }
+
+        this.saveConfig({ prefixes, duplicateScope, autoRouteSimultaneous, serialAssignments: this.config.serialAssignments });
+        showToast('Configuración y asignaciones de escáneres guardadas correctamente.', 'success');
       });
     }
 
