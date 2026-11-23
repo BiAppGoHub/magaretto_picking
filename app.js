@@ -30,7 +30,20 @@ const APP_CONFIG = {
   SUPABASE_URL: localStorage.getItem('magaretto_supabase_url') || localStorage.getItem('vete_supabase_url') || 'https://dalhlqamxzmblggxffnt.supabase.co',
   SUPABASE_KEY: localStorage.getItem('magaretto_supabase_key') || localStorage.getItem('vete_supabase_key') || 'sb_publishable_eoaaNmuekqgQ2pl8T5a5Jg_uwhsHsLH',
   TARIFA_BASE: parseFloat(localStorage.getItem('magaretto_tarifa_base') || localStorage.getItem('vete_tarifa_base')) || 150.00,
-  TOLERANCIA_DUPLICADO_SEG: parseInt(localStorage.getItem('magaretto_tolerancia_dup') || localStorage.getItem('vete_tolerancia_dup')) || 5,
+  TOLERANCIA_DUPLICADO_MS: (() => {
+    const raw = parseInt(localStorage.getItem('magaretto_tolerancia_dup') || localStorage.getItem('vete_tolerancia_dup'), 10);
+    if (!isNaN(raw) && raw > 0) {
+      return raw <= 60 ? raw * 1000 : raw;
+    }
+    return 2000;
+  })(),
+  get TOLERANCIA_DUPLICADO_SEG() {
+    return Math.round(this.TOLERANCIA_DUPLICADO_MS / 100) / 10;
+  },
+  set TOLERANCIA_DUPLICADO_SEG(val) {
+    const num = Number(val);
+    this.TOLERANCIA_DUPLICADO_MS = num <= 60 ? num * 1000 : num;
+  },
   LINEA_EMPAQUE: localStorage.getItem('magaretto_linea') || localStorage.getItem('vete_linea') || 'Línea 1 - Galpón Principal',
   AUDIO_VOLUME: parseFloat(localStorage.getItem('magaretto_audio_vol') || localStorage.getItem('vete_audio_vol')) || 0.9,
   MODO_PRUEBA: localStorage.getItem('magaretto_modo_prueba') === 'true',
@@ -984,7 +997,7 @@ const MultiZoneScannerManager = {
   },
 
   resolveZoneForScan(tokenInfo, cleanCode, now, options = {}) {
-    const toleranceMs = (Number(APP_CONFIG.TOLERANCIA_DUPLICADO_SEG) || 5) * 1000;
+    const toleranceMs = APP_CONFIG.TOLERANCIA_DUPLICADO_MS || 2000;
     let targetZoneId = options.zoneId || (tokenInfo && tokenInfo.zoneId) || this.config.activeZoneId || 'zona_1';
     let targetScannerId = options.scannerId || (tokenInfo && tokenInfo.scannerId) || this.getDefaultScannerForZone(targetZoneId);
     const hadExplicitZone = Boolean(options.zoneId || (tokenInfo && tokenInfo.hadExplicitZone));
@@ -1030,14 +1043,25 @@ const MultiZoneScannerManager = {
     };
   },
 
-  isDuplicate(dedupScopeKey, now, toleranceSec) {
+  isDuplicate(dedupScopeKey, now, toleranceVal) {
     const lastTime = this.lastTimeByScopeKey[dedupScopeKey] || 0;
-    const elapsedSec = (now - lastTime) / 1000;
-    const tol = Number(toleranceSec) || 5;
+    const elapsedMs = now - lastTime;
+    let tolMs = Number(toleranceVal);
+    if (isNaN(tolMs) || tolMs <= 0) tolMs = APP_CONFIG.TOLERANCIA_DUPLICADO_MS || 2000;
+    else if (tolMs <= 60) tolMs = tolMs * 1000; // Compatibilidad con segundos heredados
+
+    const blocked = lastTime > 0 && elapsedMs < tolMs;
+    const remainingMs = Math.max(0, tolMs - elapsedMs);
+    const elapsedSec = (elapsedMs / 1000).toFixed(1);
+    const remainingSec = (remainingMs / 1000).toFixed(1);
+
     return {
-      blocked: lastTime > 0 && elapsedSec < tol,
+      blocked,
+      elapsedMs,
+      remainingMs,
       elapsedSec,
-      remainingSec: Math.max(0, Math.ceil(tol - elapsedSec))
+      remainingSec,
+      toleranceMs: tolMs
     };
   },
 
@@ -1045,7 +1069,7 @@ const MultiZoneScannerManager = {
     this.lastTimeByScopeKey[resolved.dedupScopeKey] = now;
     AppState.lastScannedTimeByCode[resolved.dedupScopeKey] = now;
 
-    const tolMs = (Number(APP_CONFIG.TOLERANCIA_DUPLICADO_SEG) || 5) * 1000;
+    const tolMs = APP_CONFIG.TOLERANCIA_DUPLICADO_MS || 2000;
     this.cooldownMetaByZone[resolved.zoneId] = {
       code: cleanCode,
       empName: meta.empName || '',
@@ -2758,10 +2782,10 @@ function handleBarcodeScanned(barcode, options = {}) {
 
   // 2. FILTRO ANTI-DUPLICADO INDEPENDIENTE POR ZONA / ESCÁNER
   // Permite que el mismo código pase al mismo tiempo en Zonas diferentes, bloqueando solo rebotes en la misma Zona.
-  const effectiveTol = APP_CONFIG.MODO_PRUEBA ? 0.35 : APP_CONFIG.TOLERANCIA_DUPLICADO_SEG;
+  const effectiveTolMs = APP_CONFIG.MODO_PRUEBA ? 350 : (APP_CONFIG.TOLERANCIA_DUPLICADO_MS || 2000);
   const dupInfo = (typeof MultiZoneScannerManager !== 'undefined')
-    ? MultiZoneScannerManager.isDuplicate(resolved.dedupScopeKey, now, effectiveTol)
-    : { blocked: false, elapsedSec: 999, remainingSec: 0 };
+    ? MultiZoneScannerManager.isDuplicate(resolved.dedupScopeKey, now, effectiveTolMs)
+    : { blocked: false, elapsedMs: 99999, remainingMs: 0, elapsedSec: '99', remainingSec: '0', toleranceMs: effectiveTolMs };
 
   if (!options.ignoreDuplicate && dupInfo.blocked) {
     if (APP_CONFIG.MODO_PRUEBA) {
@@ -2772,8 +2796,10 @@ function handleBarcodeScanned(barcode, options = {}) {
     if (typeof MultiZoneScannerManager !== 'undefined') {
       MultiZoneScannerManager.notifyZoneResult(resolved.zoneId, resolved.scannerId, 'duplicate');
     }
-    triggerHeroFlash('duplicate', cleanCode, `Caja duplicada en ${resolved.zoneName} (leída hace ${Math.round(dupInfo.elapsedSec)}s)`, null, 0, 0, currentDate, parsed, resolved);
-    showToast(`⚠️ ${resolved.zoneName} (${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s): Espera ${dupInfo.remainingSec}s para repetir ${cleanCode} en esa zona.`, 'warning');
+    const tolLabel = dupInfo.toleranceMs < 1000 ? `${dupInfo.toleranceMs}ms` : `${(dupInfo.toleranceMs / 1000).toFixed(1)}s`;
+    const remainLabel = dupInfo.remainingMs < 1000 ? `${dupInfo.remainingMs}ms` : `${dupInfo.remainingSec}s`;
+    triggerHeroFlash('duplicate', cleanCode, `Caja duplicada en ${resolved.zoneName} (leída hace ${dupInfo.elapsedSec}s)`, null, 0, 0, currentDate, parsed, resolved);
+    showToast(`⚠️ ${resolved.zoneName} (${tolLabel}): Espera ${remainLabel} para repetir ${cleanCode} en esa zona.`, 'warning');
     return;
   }
 
@@ -3274,13 +3300,15 @@ function triggerHeroFlash(status, barcode, message, employee = null, empBoxes = 
     statusBadge.className = 'scan-status-badge duplicate';
     statusBadge.innerHTML = '<i class="fa-solid fa-clock"></i> ' + message;
     heroEmpName.innerHTML = `<span style="color:var(--status-warning); font-weight:700;">TOLERANCIA ANTI-DUPLICADO</span>`;
+    const tolMs = APP_CONFIG.TOLERANCIA_DUPLICADO_MS || 2000;
+    const tolLabel = tolMs < 1000 ? `${tolMs}ms` : `${(tolMs / 1000).toFixed(1)}s`;
     heroCodeText.innerHTML = `
       <span class="ui-badge ui-badge-warning">
-        <i class="fa-solid fa-hourglass-half"></i> Espera ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s entre lecturas consecutivas en esta zona
+        <i class="fa-solid fa-hourglass-half"></i> Espera ${tolLabel} entre lecturas consecutivas en esta zona
       </span>
       ${zoneBadgeHtml}
     `;
-    heroDniText.innerText = `Anti-rebote activo (${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG} segundos)`;
+    heroDniText.innerText = `Anti-rebote activo (${tolLabel})`;
     if (heroAccumText) heroAccumText.innerHTML = `<span style="color:var(--status-warning); font-weight:600;">⏱️ Escaneo muy rápido. Otras zonas siguen libres para leer el mismo código.</span>`;
     if (heroBarcodeRead) heroBarcodeRead.innerHTML = `<span style="color:var(--status-warning); font-family:var(--font-mono); font-weight:700;">${escapeHtml(barcode)}</span>`;
   } else {
@@ -4810,8 +4838,13 @@ function syncSettingsInputs() {
   }
 
   const elTol = document.getElementById('cfgToleranciaDuplicado');
-  if (elTol && APP_CONFIG.TOLERANCIA_DUPLICADO_SEG !== undefined) {
-    elTol.value = APP_CONFIG.TOLERANCIA_DUPLICADO_SEG;
+  const elTolPreview = document.getElementById('cfgToleranciaPreview');
+  if (elTol && APP_CONFIG.TOLERANCIA_DUPLICADO_MS !== undefined) {
+    elTol.value = APP_CONFIG.TOLERANCIA_DUPLICADO_MS;
+    if (elTolPreview) {
+      const ms = APP_CONFIG.TOLERANCIA_DUPLICADO_MS;
+      elTolPreview.textContent = ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+    }
   }
 
   const elLinea = document.getElementById('cfgLineaEmpaque');
@@ -5156,9 +5189,11 @@ function initializeApp() {
       if (!isNaN(tarifaVal) && tarifaVal >= 0) {
         APP_CONFIG.TARIFA_BASE = tarifaVal;
       }
-      const tolVal = parseInt(document.getElementById('cfgToleranciaDuplicado')?.value);
-      if (!isNaN(tolVal) && tolVal >= 1) {
-        APP_CONFIG.TOLERANCIA_DUPLICADO_SEG = tolVal;
+      const tolInput = document.getElementById('cfgToleranciaDuplicado')?.value;
+      const tolVal = parseInt(tolInput, 10);
+      if (!isNaN(tolVal) && tolVal >= 50) {
+        // Si el usuario ingresó un valor <= 60 (ej: 2 por 2 segundos), convertir a ms (2000 ms)
+        APP_CONFIG.TOLERANCIA_DUPLICADO_MS = tolVal <= 60 ? tolVal * 1000 : tolVal;
       }
       const lineaVal = document.getElementById('cfgLineaEmpaque')?.value?.trim();
       if (lineaVal) {
@@ -5166,10 +5201,10 @@ function initializeApp() {
       }
 
       localStorage.setItem('magaretto_tarifa_base', APP_CONFIG.TARIFA_BASE);
-      localStorage.setItem('magaretto_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
+      localStorage.setItem('magaretto_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_MS);
       localStorage.setItem('magaretto_linea', APP_CONFIG.LINEA_EMPAQUE);
       localStorage.setItem('vete_tarifa_base', APP_CONFIG.TARIFA_BASE);
-      localStorage.setItem('vete_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
+      localStorage.setItem('vete_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_MS);
       localStorage.setItem('vete_linea', APP_CONFIG.LINEA_EMPAQUE);
 
       const chkModoPrueba = document.getElementById('cfgModoPrueba');
@@ -5179,7 +5214,27 @@ function initializeApp() {
 
       syncSettingsInputs();
       updateAllDashboardStats();
-      showToast(`Parámetros guardados: Tolerancia ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s, Tarifa $${APP_CONFIG.TARIFA_BASE}.`, 'success');
+      const tolDisplay = APP_CONFIG.TOLERANCIA_DUPLICADO_MS < 1000 
+        ? `${APP_CONFIG.TOLERANCIA_DUPLICADO_MS} ms` 
+        : `${(APP_CONFIG.TOLERANCIA_DUPLICADO_MS / 1000).toFixed(1)} s`;
+      showToast(`Parámetros guardados: Tolerancia ${tolDisplay}, Tarifa $${APP_CONFIG.TARIFA_BASE}.`, 'success');
+    });
+  }
+
+  // Previsualización dinámica de milisegundos en tiempo real
+  const elTolInput = document.getElementById('cfgToleranciaDuplicado');
+  if (elTolInput) {
+    elTolInput.addEventListener('input', () => {
+      const elTolPreview = document.getElementById('cfgToleranciaPreview');
+      if (elTolPreview) {
+        let val = parseInt(elTolInput.value, 10);
+        if (isNaN(val) || val <= 0) {
+          elTolPreview.textContent = '-';
+        } else {
+          if (val <= 60) val = val * 1000;
+          elTolPreview.textContent = val < 1000 ? `${val} ms` : `${(val / 1000).toFixed(1)} s`;
+        }
+      }
     });
   }
 

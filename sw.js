@@ -2,7 +2,7 @@
 // VETE - SERVICE WORKER (PWA Offline & Realtime Sync Support)
 // ==============================================================================
 
-const CACHE_NAME = 'magaretto-v3.4.8';
+const CACHE_NAME = 'magaretto-v3.4.9';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
