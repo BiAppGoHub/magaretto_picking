@@ -721,7 +721,8 @@ const MultiZoneScannerManager = {
     prefixes: { 1: 'S1', 2: 'S2', 3: 'S3', 4: 'S4', 5: 'S5', 6: 'S6' },
     duplicateScope: 'zone', // 'zone' | 'scanner'
     autoRouteSimultaneous: true,
-    activeZoneId: 'zona_1'
+    activeZoneId: 'zona_1',
+    serialAssignments: {} // { [scannerId]: { portIndex, usbVendorId, usbProductId, pairedAt } }
   },
   lastTimeByScopeKey: {},
   cooldownMetaByZone: {}, // { zona_1: { code, expiresAt, lastLabel } }
@@ -729,6 +730,7 @@ const MultiZoneScannerManager = {
   serialReaders: {},
   _tickerInterval: null,
   _initialized: false,
+  _reconnectTimeout: null,
 
   init() {
     this.loadConfig();
@@ -736,10 +738,34 @@ const MultiZoneScannerManager = {
       this._initialized = true;
       this.bindUIEvents();
       this.startCooldownTicker();
+      this.setupUnloadCleanup();
     }
     this.syncSettingsUI();
     this.refreshZoneCounts();
-    this.autoConnectSerialPorts();
+    // Programar reconexión con breve espera para que el sistema operativo y Chrome liberen puertos del reload anterior
+    if (this._reconnectTimeout) clearTimeout(this._reconnectTimeout);
+    this._reconnectTimeout = setTimeout(() => this.autoConnectSerialPorts(), 450);
+  },
+
+  setupUnloadCleanup() {
+    window.addEventListener('beforeunload', () => {
+      // Liberar streams antes de que la página cierre o recargue
+      for (const id in this.serialReaders) {
+        try { this.serialReaders[id].cancel(); } catch (_) {}
+      }
+    });
+
+    // Si el navegador postergó la apertura hasta una interacción del usuario, reconectar en el primer clic
+    let gestureTriggered = false;
+    document.addEventListener('click', () => {
+      if (gestureTriggered) return;
+      const assignedCount = Object.keys(this.config.serialAssignments || {}).length;
+      const connectedCount = Object.keys(this.serialConnections || {}).length;
+      if (assignedCount > 0 && connectedCount < assignedCount) {
+        gestureTriggered = true;
+        this.autoConnectSerialPorts();
+      }
+    }, { passive: true });
   },
 
   loadConfig() {
@@ -762,6 +788,9 @@ const MultiZoneScannerManager = {
           }
           if (this.getZoneMeta(parsed.activeZoneId)) {
             this.config.activeZoneId = parsed.activeZoneId;
+          }
+          if (parsed.serialAssignments && typeof parsed.serialAssignments === 'object') {
+            this.config.serialAssignments = parsed.serialAssignments;
           }
         }
       }
@@ -786,12 +815,14 @@ const MultiZoneScannerManager = {
     if (nextConfig.activeZoneId && this.getZoneMeta(nextConfig.activeZoneId)) {
       this.config.activeZoneId = nextConfig.activeZoneId;
     }
+    if (nextConfig.serialAssignments && typeof nextConfig.serialAssignments === 'object') {
+      this.config.serialAssignments = nextConfig.serialAssignments;
+    }
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.config));
     } catch (_) {}
     this.syncSettingsUI();
     this.refreshZoneCounts();
-    this.autoConnectSerialPorts();
   },
 
   getZoneMeta(zoneId) {
@@ -1138,20 +1169,129 @@ const MultiZoneScannerManager = {
         ? 'Anti-duplicado por escáner individual'
         : 'Anti-duplicado independiente por zona';
     }
+
+    // Reflejar estado de escáneres seriales guardados vs conectados
+    const assignments = this.config.serialAssignments || {};
+    for (let id = 1; id <= 6; id++) {
+      const isConnected = !!this.serialConnections[id];
+      const isSaved = !!assignments[id];
+      this.updateSerialUI(id, isConnected, isSaved);
+    }
   },
 
   async autoConnectSerialPorts() {
     if (!('serial' in navigator)) return;
     try {
+      // Breve espera para asegurar que el sistema operativo y Chrome liberen los sockets COM del reload previo
+      await new Promise(r => setTimeout(r, 450));
       const ports = await navigator.serial.getPorts();
-      if (!ports || ports.length === 0) return;
-      ports.forEach((port, idx) => {
-        const scannerId = idx + 1;
-        if (!this.serialConnections[scannerId]) {
-          this.listenToSerialPort(port, scannerId).catch(() => {});
+      if (!ports || ports.length === 0) {
+        this.resetUnconnectedUI();
+        return;
+      }
+
+      const assignments = this.config.serialAssignments || {};
+      const assignedScannerIds = Object.keys(assignments).map(Number);
+      const usedPorts = new Set();
+      let connectedCount = 0;
+
+      if (assignedScannerIds.length > 0) {
+        for (const scannerId of assignedScannerIds) {
+          if (this.serialConnections[scannerId]) {
+            connectedCount++;
+            continue;
+          }
+          const cfg = assignments[scannerId];
+          let portToUse = null;
+
+          // 1. Intentar por coincidencia de Hardware IDs
+          if (cfg && (cfg.usbVendorId || cfg.usbProductId)) {
+            portToUse = ports.find(p => {
+              if (usedPorts.has(p)) return false;
+              const inf = (p.getInfo && typeof p.getInfo === 'function') ? p.getInfo() : {};
+              return inf.usbVendorId === cfg.usbVendorId && inf.usbProductId === cfg.usbProductId;
+            });
+          }
+
+          // 2. Intentar por índice de puerto en el array
+          if (!portToUse && cfg && typeof cfg.portIndex === 'number' && ports[cfg.portIndex] && !usedPorts.has(ports[cfg.portIndex])) {
+            portToUse = ports[cfg.portIndex];
+          }
+
+          // 3. Fallback: cualquier puerto disponible no asignado
+          if (!portToUse) {
+            portToUse = ports.find(p => !usedPorts.has(p));
+          }
+
+          if (portToUse) {
+            usedPorts.add(portToUse);
+            const ok = await this.tryOpenAndListen(portToUse, scannerId);
+            if (ok) connectedCount++;
+          } else {
+            this.updateSerialUI(scannerId, false, true);
+          }
         }
-      });
-    } catch (_) {}
+      } else {
+        // Si no había asignaciones previas, vincular en orden los puertos que el usuario ya autorizó
+        for (let idx = 0; idx < ports.length; idx++) {
+          const scannerId = idx + 1;
+          if (scannerId <= 6 && !this.serialConnections[scannerId]) {
+            const ok = await this.tryOpenAndListen(ports[idx], scannerId);
+            if (ok) {
+              connectedCount++;
+              if (!this.config.serialAssignments) this.config.serialAssignments = {};
+              const inf = (ports[idx].getInfo && typeof ports[idx].getInfo === 'function') ? ports[idx].getInfo() : {};
+              this.config.serialAssignments[scannerId] = {
+                portIndex: idx,
+                usbVendorId: inf.usbVendorId || 0,
+                usbProductId: inf.usbProductId || 0,
+                pairedAt: Date.now()
+              };
+            }
+          }
+        }
+        if (connectedCount > 0) {
+          try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.config));
+          } catch (_) {}
+        }
+      }
+
+      this.resetUnconnectedUI();
+
+      if (connectedCount > 0) {
+        showToast(`⚡ ${connectedCount} escáner(es) USB-COM reconectado(s) automáticamente.`, 'success');
+      }
+    } catch (err) {
+      console.warn('Error en autoConnectSerialPorts:', err);
+      this.resetUnconnectedUI();
+    }
+  },
+
+  resetUnconnectedUI() {
+    const assignments = this.config.serialAssignments || {};
+    for (let id = 1; id <= 6; id++) {
+      if (!this.serialConnections[id]) {
+        this.updateSerialUI(id, false, !!assignments[id]);
+      }
+    }
+  },
+
+  async tryOpenAndListen(port, scannerId, maxAttempts = 2) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.listenToSerialPort(port, scannerId);
+        return true;
+      } catch (err) {
+        console.warn(`Intento ${attempt} al abrir puerto para Escáner ${scannerId}:`, err);
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 600));
+        }
+      }
+    }
+    const isSaved = !!(this.config.serialAssignments && this.config.serialAssignments[scannerId]);
+    this.updateSerialUI(scannerId, false, isSaved);
+    return false;
   },
 
   async listenToSerialPort(port, scannerId) {
@@ -1160,7 +1300,7 @@ const MultiZoneScannerManager = {
     }
     const zone = this.getScannerZone(scannerId);
     this.serialConnections[scannerId] = port;
-    this.updateSerialUI(scannerId, true);
+    this.updateSerialUI(scannerId, true, true);
 
     showToast(`Escáner ${scannerId} (${zone.name}) vinculado por Web Serial.`, 'success');
 
@@ -1200,20 +1340,27 @@ const MultiZoneScannerManager = {
       } catch (_) {}
       delete this.serialReaders[scannerId];
       delete this.serialConnections[scannerId];
-      this.updateSerialUI(scannerId, false);
+      const isSaved = !!(this.config.serialAssignments && this.config.serialAssignments[scannerId]);
+      this.updateSerialUI(scannerId, false, isSaved);
     }
   },
 
-  updateSerialUI(scannerId, isConnected) {
+  updateSerialUI(scannerId, isConnected, isSaved = false) {
     const btn = document.getElementById(`btnPairSerial_${scannerId}`);
     const pill = document.getElementById(`scannerPill${scannerId}`);
     if (btn) {
       if (isConnected) {
         btn.classList.add('paired');
+        btn.classList.remove('pairing');
         btn.innerHTML = `<i class="fa-solid fa-link-slash"></i> Desconectar COM ${scannerId}`;
         btn.title = `Escáner ${scannerId} conectado. Clic para desconectar.`;
+      } else if (isSaved) {
+        btn.classList.remove('paired');
+        btn.innerHTML = `<i class="fa-solid fa-plug"></i> COM ${scannerId} (Guardado)`;
+        btn.title = `Escáner ${scannerId} asignado previamente. Clic para conectar o reasignar.`;
       } else {
         btn.classList.remove('paired');
+        btn.classList.remove('pairing');
         btn.innerHTML = `<i class="fa-solid fa-plug"></i> COM ${scannerId}`;
         btn.title = `Vincular puerto USB-COM para Escáner ${scannerId}`;
       }
@@ -1222,6 +1369,10 @@ const MultiZoneScannerManager = {
       if (isConnected) {
         pill.classList.add('serial-connected');
         pill.title = `Escáner ${scannerId} conectado (Web Serial). Clic para desconectar.`;
+      } else if (isSaved) {
+        pill.classList.remove('serial-connected');
+        const pfx = this.config.prefixes[scannerId] || `S${scannerId}`;
+        pill.title = `Escáner ${scannerId} asignado a puerto COM (Clic para reconectar)`;
       } else {
         pill.classList.remove('serial-connected');
         const pfx = this.config.prefixes[scannerId] || `S${scannerId}`;
@@ -1235,7 +1386,11 @@ const MultiZoneScannerManager = {
     const reader = this.serialReaders[scannerId];
 
     if (!port && !reader) {
-      this.updateSerialUI(scannerId, false);
+      if (this.config.serialAssignments && this.config.serialAssignments[scannerId]) {
+        delete this.config.serialAssignments[scannerId];
+        this.saveConfig();
+      }
+      this.updateSerialUI(scannerId, false, false);
       return;
     }
 
@@ -1257,19 +1412,27 @@ const MultiZoneScannerManager = {
 
     delete this.serialConnections[scannerId];
     delete this.serialReaders[scannerId];
-    this.updateSerialUI(scannerId, false);
+    if (this.config.serialAssignments && this.config.serialAssignments[scannerId]) {
+      delete this.config.serialAssignments[scannerId];
+      this.saveConfig();
+    }
+    this.updateSerialUI(scannerId, false, false);
     showToast(`Escáner ${scannerId} desconectado.`, 'info');
   },
 
   async disconnectAllScanners() {
     const connectedIds = Object.keys(this.serialConnections);
-    if (connectedIds.length === 0) {
+    const assignedIds = Object.keys(this.config.serialAssignments || {});
+    const allIds = Array.from(new Set([...connectedIds, ...assignedIds]));
+    if (allIds.length === 0) {
       showToast('No hay escáneres COM conectados actualmente.', 'info');
       return;
     }
-    for (const id of connectedIds) {
+    for (const id of allIds) {
       await this.disconnectSerialScanner(Number(id));
     }
+    this.config.serialAssignments = {};
+    this.saveConfig();
     showToast('Todos los escáneres seriales han sido desconectados.', 'success');
   },
 
@@ -1303,6 +1466,20 @@ const MultiZoneScannerManager = {
     try {
       const port = await navigator.serial.requestPort();
       await this.listenToSerialPort(port, scannerId);
+
+      // Persistir asignación exacta en localStorage
+      const allPorts = await navigator.serial.getPorts();
+      const portIndex = allPorts.indexOf(port);
+      const info = (port.getInfo && typeof port.getInfo === 'function') ? port.getInfo() : {};
+
+      if (!this.config.serialAssignments) this.config.serialAssignments = {};
+      this.config.serialAssignments[scannerId] = {
+        portIndex: portIndex >= 0 ? portIndex : 0,
+        usbVendorId: info.usbVendorId || 0,
+        usbProductId: info.usbProductId || 0,
+        pairedAt: Date.now()
+      };
+      this.saveConfig();
     } catch (err) {
       if (err && err.name !== 'NotFoundError') {
         showToast(`No se pudo abrir puerto COM ${scannerId}: ${err.message}`, 'error');

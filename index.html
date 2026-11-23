@@ -26,7 +26,7 @@
     (function() {
       try {
         const isSecureOrLocal = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const TARGET_VERSION = 'v3.4.4';
+        const TARGET_VERSION = 'v3.4.5';
         if (localStorage.getItem('magaretto_ui_version') !== TARGET_VERSION) {
           localStorage.setItem('magaretto_ui_version', TARGET_VERSION);
           localStorage.setItem('magaretto_theme', 'dark');
@@ -89,7 +89,7 @@
   </script>
 
   <!-- Custom Styles -->
-  <link rel="stylesheet" href="styles.css?v=3.4.4">
+  <link rel="stylesheet" href="styles.css?v=3.4.5">
 </head>
 <body>
 
@@ -289,7 +289,7 @@
 
         <!-- Versión Opcional -->
         <div class="sidebar-version">
-          <span>v3.4.4</span>
+          <span>v3.4.5</span>
         </div>
 
         <!-- Botón de Cerrar Sesión -->
@@ -473,6 +473,9 @@
                   <span class="zone-hint-chip" id="multiZoneModeChip">Anti-duplicado independiente por zona</span>
                   <button type="button" class="btn-test-simultaneous" id="btnTestSimultaneousScans" title="Simula el escaneo simultáneo del mismo código en Zona 1 y Zona 2">
                     <i class="fa-solid fa-bolt"></i> Probar Simultáneo (2 Zonas)
+                  </button>
+                  <button type="button" class="btn-reconnect-scanners" id="btnReconnectScanners" onclick="MultiZoneScannerManager.autoConnectSerialPorts()" title="Reconectar automáticamente los escáneres USB-COM guardados">
+                    <i class="fa-solid fa-rotate"></i> Reconectar Escáneres
                   </button>
                   <button type="button" class="btn-disconnect-all" id="btnDisconnectAllScanners" onclick="MultiZoneScannerManager.disconnectAllScanners()" title="Desconectar todos los puertos COM vinculados">
                     <i class="fa-solid fa-link-slash"></i> Desconectar Escáneres
@@ -2175,6 +2178,6 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Script de la Aplicación -->
-  <script src="app.js?v=3.4.4"></script>
+  <script src="app.js?v=3.4.5"></script>
 </body>
 </html>

@@ -5582,6 +5582,28 @@ button, input, select, textarea {
   color: #FFFFFF;
 }
 
+.btn-reconnect-scanners {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  color: #60A5FA;
+  font-family: var(--font-sans);
+  font-size: clamp(0.68rem, 0.62vw, 0.8rem);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-reconnect-scanners:hover {
+  background: rgba(96, 165, 250, 0.22);
+  border-color: #3B82F6;
+  color: #FFFFFF;
+}
+
 .btn-delete-scan-row {
   background: transparent;
   border: none;
