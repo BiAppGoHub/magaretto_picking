@@ -4302,6 +4302,8 @@ function switchTab(targetTabId) {
     renderProductionCharts();
   } else if (targetTabId === 'tab-users') {
     renderUsersTable();
+  } else if (targetTabId === 'tab-settings') {
+    syncSettingsInputs();
   }
 }
 
@@ -4801,6 +4803,32 @@ async function confirmDeleteUser(userIdOrUsername) {
   }
 }
 
+function syncSettingsInputs() {
+  const elTarifa = document.getElementById('cfgTarifaBase');
+  if (elTarifa && APP_CONFIG.TARIFA_BASE !== undefined) {
+    elTarifa.value = APP_CONFIG.TARIFA_BASE;
+  }
+
+  const elTol = document.getElementById('cfgToleranciaDuplicado');
+  if (elTol && APP_CONFIG.TOLERANCIA_DUPLICADO_SEG !== undefined) {
+    elTol.value = APP_CONFIG.TOLERANCIA_DUPLICADO_SEG;
+  }
+
+  const elLinea = document.getElementById('cfgLineaEmpaque');
+  if (elLinea && APP_CONFIG.LINEA_EMPAQUE) {
+    elLinea.value = APP_CONFIG.LINEA_EMPAQUE;
+  }
+
+  const elModoPrueba = document.getElementById('cfgModoPrueba');
+  if (elModoPrueba) {
+    elModoPrueba.checked = !!APP_CONFIG.MODO_PRUEBA;
+  }
+
+  if (typeof MultiZoneScannerManager !== 'undefined') {
+    MultiZoneScannerManager.syncSettingsUI();
+  }
+}
+
 // ==============================================================================
 // 10. INICIALIZACIÓN DE EVENTOS Y FORMULARIOS
 // ==============================================================================
@@ -4819,6 +4847,7 @@ function initializeApp() {
 
   // 0E. Inicializar Gestor Multi-Zona (3 Zonas de Marcado x 2 Escáneres)
   MultiZoneScannerManager.init();
+  syncSettingsInputs();
 
   // 1. Inicializar Pestañas con switchTab
   document.querySelectorAll('.nav-tab').forEach(tabBtn => {
@@ -5123,13 +5152,22 @@ function initializeApp() {
   const btnSaveParams = document.getElementById('btnSaveParamsConfig');
   if (btnSaveParams) {
     btnSaveParams.addEventListener('click', () => {
-      APP_CONFIG.TARIFA_BASE = parseFloat(document.getElementById('cfgTarifaBase').value) || 150.00;
-      APP_CONFIG.TOLERANCIA_DUPLICADO_SEG = parseInt(document.getElementById('cfgToleranciaDuplicado').value) || 5;
-      APP_CONFIG.LINEA_EMPAQUE = document.getElementById('cfgLineaEmpaque').value || 'Línea 1';
+      const tarifaVal = parseFloat(document.getElementById('cfgTarifaBase')?.value);
+      if (!isNaN(tarifaVal) && tarifaVal >= 0) {
+        APP_CONFIG.TARIFA_BASE = tarifaVal;
+      }
+      const tolVal = parseInt(document.getElementById('cfgToleranciaDuplicado')?.value);
+      if (!isNaN(tolVal) && tolVal >= 1) {
+        APP_CONFIG.TOLERANCIA_DUPLICADO_SEG = tolVal;
+      }
+      const lineaVal = document.getElementById('cfgLineaEmpaque')?.value?.trim();
+      if (lineaVal) {
+        APP_CONFIG.LINEA_EMPAQUE = lineaVal;
+      }
 
-      localStorage.setItem('agroconecta_tarifa_base', APP_CONFIG.TARIFA_BASE);
-      localStorage.setItem('agroconecta_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
-      localStorage.setItem('agroconecta_linea', APP_CONFIG.LINEA_EMPAQUE);
+      localStorage.setItem('magaretto_tarifa_base', APP_CONFIG.TARIFA_BASE);
+      localStorage.setItem('magaretto_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
+      localStorage.setItem('magaretto_linea', APP_CONFIG.LINEA_EMPAQUE);
       localStorage.setItem('vete_tarifa_base', APP_CONFIG.TARIFA_BASE);
       localStorage.setItem('vete_tolerancia_dup', APP_CONFIG.TOLERANCIA_DUPLICADO_SEG);
       localStorage.setItem('vete_linea', APP_CONFIG.LINEA_EMPAQUE);
@@ -5139,8 +5177,9 @@ function initializeApp() {
         setTestMode(chkModoPrueba.checked);
       }
 
+      syncSettingsInputs();
       updateAllDashboardStats();
-      showToast('Parámetros de operación guardados correctamente.', 'success');
+      showToast(`Parámetros guardados: Tolerancia ${APP_CONFIG.TOLERANCIA_DUPLICADO_SEG}s, Tarifa $${APP_CONFIG.TARIFA_BASE}.`, 'success');
     });
   }
 
